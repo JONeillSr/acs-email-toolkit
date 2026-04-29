@@ -9,13 +9,13 @@
     configures MailFrom sender addresses, and sends a test email to validate the deployment.
 
     The script is designed for IT consultants and administrators who need to deploy ACS Email
-    for multiple clients quickly and consistently. All operations are implemented as individual
+    for quickly and consistently. All operations are implemented as individual
     functions following PowerShell best practices with full error handling and logging.
 
     Resources created:
     - Resource Group (optional, if it doesn't exist)
-    - Email Communication Service
-    - Communication Service
+    - Azure Email Communication Service
+    - Azure Communication Service
     - Custom Domain (with verification guidance)
     - MailFrom Sender Addresses
     - Entra ID App Registration with Client Secret
@@ -24,7 +24,7 @@
 
 .PARAMETER ResourceGroupName
     The name of the Azure Resource Group. Will be created if it doesn't exist.
-    Example: rg-acs-email-prod
+    Example: acs-email-prod-eastus-rg
 
 .PARAMETER Location
     The Azure region for the Resource Group.
@@ -36,21 +36,21 @@
 
 .PARAMETER EmailServiceName
     The name for the Email Communication Service resource.
-    Example: acs-email-contoso-prod
+    Example: acs-email-somedomainsomewhere-prod-eastus
 
 .PARAMETER CommunicationServiceName
     The name for the Communication Service resource. Keep this SHORT — it becomes
     part of the SMTP username if custom SMTP Usernames are not used.
-    Example: acs-contoso
+    Example: acs-something
 
 .PARAMETER CustomDomainName
     The custom domain to configure for sending email.
-    Example: contoso.com
+    Example: somedomainsomewhere.com
 
 .PARAMETER MailFromAddresses
     An array of MailFrom sender usernames to create (without the domain).
-    Default: @("DoNotReply")
-    Example: @("DoNotReply", "scanner", "alerts", "noreply")
+    Default: @("donotreply")
+    Example: @("donotreply", "scanner", "alerts", "noreply")
 
 .PARAMETER MailFromDisplayNames
     An array of display names corresponding to each MailFrom address.
@@ -60,7 +60,7 @@
 
 .PARAMETER EntraAppName
     The display name for the Entra ID App Registration used for SMTP authentication.
-    Default: acs-smtp-relay
+    Default: acs-smtp-relay-prod-eastus
 
 .PARAMETER SmtpUsername
     The custom SMTP Username to create. Use something short that fits device
@@ -87,32 +87,32 @@
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
-        -ResourceGroupName "rg-acs-email-prod" `
-        -EmailServiceName "acs-email-contoso-prod" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
-        -MailFromAddresses @("DoNotReply", "scanner", "alerts") `
+        -ResourceGroupName "acs-email-prod-eastus-rg" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-something" `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Deploys a complete ACS Email environment with a custom domain and three sender addresses.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
-        -ResourceGroupName "rg-acs-email-test" `
+        -ResourceGroupName "acs-email-test-eastus-rg" `
         -EmailServiceName "acs-email-test" `
         -CommunicationServiceName "acs-test" `
         -UseAzureManagedDomain `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Deploys ACS Email with an Azure-managed domain for quick testing.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
-        -ResourceGroupName "rg-acs-email-prod" `
-        -EmailServiceName "acs-email-contoso-prod" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "notify.contoso.com" `
+        -ResourceGroupName "acs-email-prod-eastus-rg" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-something" `
+        -CustomDomainName "notify.somedomainsomewhere.com" `
         -SmtpUsername "scanner-smtp" `
         -SecretExpirationMonths 24
 
@@ -124,8 +124,8 @@
     Author       : John O'Neill Sr.
     Company      : Azure Innovators
     Website      : https://www.azureinnovators.com
-    Blog Post    : https://azureinnovators.com/blog
-    GitHub       : https://github.com/AzureInnovators
+    Blog         : https://azureinnovators.com/blog
+    GitHub       : https://github.com/JONeillSr/acs-email-toolkit
 
     Prerequisites:
     - Azure PowerShell module (Az) installed: Install-Module -Name Az -Force
@@ -135,12 +135,11 @@
     - Appropriate Azure and Entra ID permissions:
         * Azure Subscription Contributor or Owner
         * Entra ID Application Administrator or Global Administrator
-    - PowerShell 7.0 or later recommended
+    - PowerShell 7.6 or later recommended
 
     Change Log:
     v1.0.0 - 2026-04-29 - Initial release
 #>
-
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory = $true, HelpMessage = "Resource Group name for ACS resources")]
@@ -191,8 +190,7 @@ param(
     [switch]$UseAzureManagedDomain
 )
 
-#Requires -Version 7.0
-#Requires -Modules Az.Accounts, Az.Resources, Az.Communication
+#Requires -Version 5.1
 
 # ============================================================================
 # CONFIGURATION
@@ -246,11 +244,24 @@ function Test-Prerequisites {
 
     Write-Log "Validating prerequisites..." -Level INFO
 
-    # Check Az module
-    if (-not (Get-Module -ListAvailable -Name Az.Communication)) {
-        Write-Log "Az.Communication module not found. Installing..." -Level WARNING
-        Install-Module -Name Az.Communication -Force -AllowClobber -Scope CurrentUser
-        Write-Log "Az.Communication module installed." -Level SUCCESS
+    # Check required Az modules and install if missing
+    $requiredModules = @("Az.Accounts", "Az.Resources", "Az.Communication")
+
+    foreach ($moduleName in $requiredModules) {
+        if (-not (Get-Module -ListAvailable -Name $moduleName)) {
+            Write-Log "$moduleName module not found. Installing..." -Level WARNING
+            try {
+                Install-Module -Name $moduleName -Force -AllowClobber -Scope CurrentUser
+                Write-Log "$moduleName module installed." -Level SUCCESS
+            }
+            catch {
+                Write-Log "Failed to install $moduleName. Run manually: Install-Module -Name $moduleName -Force -Scope CurrentUser" -Level ERROR
+                throw "Required module $moduleName could not be installed."
+            }
+        }
+        else {
+            Write-Log "$moduleName module is available." -Level INFO
+        }
     }
 
     # Check Azure CLI
@@ -290,6 +301,35 @@ function Test-Prerequisites {
     if ($LASTEXITCODE -ne 0) {
         Write-Log "Azure CLI not logged in. Running az login..." -Level WARNING
         az login
+    }
+
+    # Check Microsoft.Communication resource provider registration
+    Write-Log "Checking Microsoft.Communication resource provider..." -Level INFO
+    $provider = Get-AzResourceProvider -ProviderNamespace Microsoft.Communication -ErrorAction SilentlyContinue
+    if (-not $provider -or $provider[0].RegistrationState -ne "Registered") {
+        Write-Log "Microsoft.Communication provider not registered. Registering..." -Level WARNING
+        Register-AzResourceProvider -ProviderNamespace Microsoft.Communication | Out-Null
+
+        # Wait for registration
+        $maxWait = 120
+        $elapsed = 0
+        do {
+            Start-Sleep -Seconds 10
+            $elapsed += 10
+            $provider = Get-AzResourceProvider -ProviderNamespace Microsoft.Communication
+            Write-Log "Registration state: $($provider[0].RegistrationState) (waited $elapsed seconds)..." -Level INFO
+        } while ($provider[0].RegistrationState -ne "Registered" -and $elapsed -lt $maxWait)
+
+        if ($provider[0].RegistrationState -eq "Registered") {
+            Write-Log "Microsoft.Communication provider registered successfully." -Level SUCCESS
+        }
+        else {
+            Write-Log "Provider registration timed out. Please register manually: Register-AzResourceProvider -ProviderNamespace Microsoft.Communication" -Level ERROR
+            throw "Resource provider registration failed."
+        }
+    }
+    else {
+        Write-Log "Microsoft.Communication provider is registered." -Level INFO
     }
 
     Write-Log "All prerequisites validated." -Level SUCCESS
@@ -352,13 +392,20 @@ function New-ACSEmailService {
 
     if ($PSCmdlet.ShouldProcess($EmailServiceName, "Create Email Communication Service")) {
         Write-Log "Creating Email Communication Service '$EmailServiceName'..." -Level INFO
-        $emailService = New-AzEmailService `
-            -ResourceGroupName $ResourceGroupName `
-            -Name $EmailServiceName `
-            -DataLocation $DataLocation
+        try {
+            $emailService = New-AzEmailService `
+                -ResourceGroupName $ResourceGroupName `
+                -Name $EmailServiceName `
+                -DataLocation $DataLocation `
+                -ErrorAction Stop
 
-        Write-Log "Email Communication Service '$EmailServiceName' created successfully." -Level SUCCESS
-        return $emailService
+            Write-Log "Email Communication Service '$EmailServiceName' created successfully." -Level SUCCESS
+            return $emailService
+        }
+        catch {
+            Write-Log "Failed to create Email Communication Service: $($_.Exception.Message)" -Level ERROR
+            throw
+        }
     }
 }
 
@@ -385,14 +432,21 @@ function New-ACSCommunicationService {
 
     if ($PSCmdlet.ShouldProcess($CommunicationServiceName, "Create Communication Service")) {
         Write-Log "Creating Communication Service '$CommunicationServiceName'..." -Level INFO
-        $commService = New-AzCommunicationService `
-            -ResourceGroupName $ResourceGroupName `
-            -Name $CommunicationServiceName `
-            -DataLocation $DataLocation `
-            -Location "Global"
+        try {
+            $commService = New-AzCommunicationService `
+                -ResourceGroupName $ResourceGroupName `
+                -Name $CommunicationServiceName `
+                -DataLocation $DataLocation `
+                -Location "Global" `
+                -ErrorAction Stop
 
-        Write-Log "Communication Service '$CommunicationServiceName' created successfully." -Level SUCCESS
-        return $commService
+            Write-Log "Communication Service '$CommunicationServiceName' created successfully." -Level SUCCESS
+            return $commService
+        }
+        catch {
+            Write-Log "Failed to create Communication Service: $($_.Exception.Message)" -Level ERROR
+            throw
+        }
     }
 }
 
@@ -427,13 +481,20 @@ function New-ACSEmailDomain {
         Write-Log "Creating custom domain '$CustomDomainName'..." -Level INFO
 
         if ($PSCmdlet.ShouldProcess($CustomDomainName, "Create Custom Domain")) {
-            $domain = New-AzEmailServiceDomain `
-                -ResourceGroupName $ResourceGroupName `
-                -EmailServiceName $EmailServiceName `
-                -Name $CustomDomainName `
-                -DomainManagement "CustomerManaged"
+            try {
+                $domain = New-AzEmailServiceDomain `
+                    -ResourceGroupName $ResourceGroupName `
+                    -EmailServiceName $EmailServiceName `
+                    -Name $CustomDomainName `
+                    -DomainManagement "CustomerManaged" `
+                    -ErrorAction Stop
 
-            Write-Log "Custom domain '$CustomDomainName' created." -Level SUCCESS
+                Write-Log "Custom domain '$CustomDomainName' created." -Level SUCCESS
+            }
+            catch {
+                Write-Log "Failed to create custom domain: $($_.Exception.Message)" -Level ERROR
+                throw
+            }
 
             if (-not $SkipDomainVerification) {
                 Request-DomainVerification
@@ -467,13 +528,13 @@ function Request-DomainVerification {
     Write-Log "============================================================" -Level WARNING
     Write-Log "ACTION REQUIRED: Add DNS records for domain verification" -Level WARNING
     Write-Log "============================================================" -Level WARNING
-    Write-Log "" -Level INFO
+    Write-Log " " -Level INFO
     Write-Log "1. Log into the Azure Portal" -Level INFO
     Write-Log "2. Navigate to: Email Communication Services > $EmailServiceName > Provision Domains" -Level INFO
     Write-Log "3. Click on '$CustomDomainName'" -Level INFO
     Write-Log "4. Add the TXT, SPF, and DKIM records shown to your DNS provider" -Level INFO
     Write-Log "5. Click 'Verify' for each record type" -Level INFO
-    Write-Log "" -Level INFO
+    Write-Log " " -Level INFO
 
     $continue = Read-Host "Press ENTER once DNS records are added and verified (or type 'skip' to continue without verification)"
 
@@ -943,17 +1004,32 @@ function Invoke-ACSEmailDeployment {
         # Step 8: Create Entra ID App Registration
         $entraApp = New-ACSEntraApp
 
-        # Step 9: Assign IAM role
-        Set-ACSRoleAssignment -AppId $entraApp.AppId
+        # Steps 9-12 depend on the Entra app — skip gracefully during -WhatIf
+        if ($null -eq $entraApp -or [string]::IsNullOrWhiteSpace($entraApp.AppId)) {
+            if ($WhatIfPreference) {
+                Write-Log "WhatIf: Would assign IAM role to Entra app on '$CommunicationServiceName'" -Level INFO
+                Write-Log "WhatIf: Would create SMTP Username '$SmtpUsername'" -Level INFO
+                Write-Log "WhatIf: Would send test email to '$TestRecipientEmail'" -Level INFO
+                Write-Log "WhatIf: Would display deployment summary" -Level INFO
+            }
+            else {
+                Write-Log "Entra app creation returned no result. Cannot proceed with Steps 9-12." -Level ERROR
+                throw "Entra app creation failed — no AppId returned."
+            }
+        }
+        else {
+            # Step 9: Assign IAM role
+            Set-ACSRoleAssignment -AppId $entraApp.AppId
 
-        # Step 10: Create SMTP Username
-        New-ACSSmtpUsername -AppId $entraApp.AppId
+            # Step 10: Create SMTP Username
+            New-ACSSmtpUsername -AppId $entraApp.AppId
 
-        # Step 11: Send test email
-        Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
+            # Step 11: Send test email
+            Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
 
-        # Step 12: Show summary
-        Show-DeploymentSummary -EntraApp $entraApp
+            # Step 12: Show summary
+            Show-DeploymentSummary -EntraApp $entraApp
+        }
 
         $stopwatch.Stop()
         Write-Log "Total deployment time: $($stopwatch.Elapsed.ToString('mm\:ss'))" -Level SUCCESS
