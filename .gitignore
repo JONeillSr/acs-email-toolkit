@@ -1,0 +1,29 @@
+# Logs
+*.log
+Deploy-ACSEmail_*.log
+
+# Secrets and credentials
+*.secret
+*.key
+*.pfx
+*.pem
+credentials.json
+secrets.json
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PowerShell module cache
+PSModuleAnalysisCache
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
