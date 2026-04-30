@@ -5,72 +5,28 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Blog](https://img.shields.io/badge/Blog-Azure%20Innovators-green.svg)](https://www.azureinnovators.com/blog/)
 
-Automate the end-to-end deployment of Azure Communication Services (ACS) Email — from resource creation to sending your first authenticated email. Built for IT consultants and administrators who deploy ACS Email for multiple clients and need consistency, speed, and repeatability.
+Automate the end-to-end deployment of Azure Communication Services (ACS) Email -- from resource creation to sending your first authenticated email. Built for IT consultants and administrators who deploy ACS Email for multiple clients and need consistency, speed, and repeatability.
 
 > **Part of the [ACS Email Blog Series](https://www.azureinnovators.com/blog/) by [Azure Innovators](https://www.azureinnovators.com)**
 
 ---
 
-## What This Toolkit Does
+## Three Modes of Operation
 
-The `Deploy-ACSEmail.ps1` script automates every step of an ACS Email deployment:
+### 1. Full Deployment (default)
+Creates everything from scratch -- Resource Group, Email Communication Service, Communication Service, custom domain, DNS records, MailFrom addresses, Entra ID authentication, IAM roles, SMTP username, and sends a test email.
 
-1. **Creates the Resource Group** with standard tagging
-2. **Creates the Email Communication Service** resource
-3. **Creates the Communication Service** resource
-4. **Configures a custom domain** (or Azure-managed domain for testing)
-5. **Guides you through DNS verification** (Domain, SPF, DKIM, DKIM2)
-6. **Creates MailFrom sender addresses** (scanner@, alerts@, noreply@, etc.)
-7. **Links the email domain** to the Communication Service
-8. **Creates an Entra ID App Registration** with a client secret
-9. **Assigns the IAM role** directly on the Communication Service resource
-10. **Creates a custom SMTP Username** (short format for device compatibility)
-11. **Sends a test email** to validate the deployment
-12. **Outputs a deployment summary** with all SMTP settings ready to configure devices
+### 2. Add SMTP Endpoint (`-AddSmtpEndpoint`)
+Adds a new authenticated SMTP endpoint to an existing deployment. Creates a dedicated Entra app, client secret, IAM role, SMTP username, and optional MailFrom address -- without touching the infrastructure. Use when a client needs separate credentials for printers, ERP systems, firewalls, or other applications.
 
-Total deployment time: **under 10 minutes** (plus DNS propagation).
-
----
-
-## Why This Exists
-
-Setting up ACS Email manually through the Azure Portal involves clicking through multiple blades, creating two separate resources, registering an Entra app, assigning IAM roles, configuring DNS records, and connecting everything together. It's a 30-minute process that's easy to get wrong — especially the SMTP username format and IAM role assignment, which are the #1 and #2 causes of authentication failures.
-
-This script eliminates those pain points. Run it once with your parameters, and you get a fully functional ACS Email environment with proper authentication, governance, and device-ready SMTP credentials.
-
-For the full walkthrough of what this script automates, read the blog series:
-- **[Part 1: Why SMTP Relay Is Breaking Your Applications](https://azureinnovators.com/why-smtp-relay-is-breaking-your-applications-and-how-to-fix-it-with-azure-communication-services/)** — The problem and why ACS Email is the solution
-- **Part 2: How to Set Up ACS Email from Scratch in Under 30 Minutes** — Step-by-step setup guide (this script automates Part 2)
-- **Part 3: Domain Configuration and DNS (SPF, DKIM, DMARC)** — Deep dive into email authentication
-- **Part 4: Managing Sender Identities and Real-World Automation** — Production patterns and automation
-
----
-
-## Prerequisites
-
-| Requirement | Details |
-|---|---|
-| **PowerShell** | 7.0 or later ([Install](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell)) |
-| **Azure PowerShell** | Az module (`Install-Module -Name Az -Force`) |
-| **Az.Communication** | ACS module (`Install-Module -Name Az.Communication -Force`) |
-| **Azure CLI** | Required for domain verification and sender username creation ([Install](https://aka.ms/installazurecli)) |
-| **Azure Subscription** | Contributor or Owner role |
-| **Entra ID** | Application Administrator or Global Administrator |
+### 3. Test Email Only (`-TestEmailOnly`)
+Sends a test email using an existing ACS deployment. Use after completing manual steps (domain verification, SMTP username creation in the Portal) or to re-test after resolving issues. Tries the custom SMTP username first, then falls back to the legacy format automatically.
 
 ---
 
 ## Quick Start
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/AzureInnovators/acs-email-toolkit.git
-cd acs-email-toolkit
-```
-
-### 2. Run with your parameters
-
-**Custom domain deployment (production):**
+### Full Deployment with Azure DNS automation
 
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
@@ -78,24 +34,39 @@ cd acs-email-toolkit
     -EmailServiceName "acs-email-contoso-prod" `
     -CommunicationServiceName "acs-contoso" `
     -CustomDomainName "contoso.com" `
-    -MailFromAddresses @("DoNotReply", "scanner", "alerts") `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -MailFromAddresses @("donotreply", "scanner", "alerts") `
     -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-    -SmtpUsername "scanner-smtp" `
     -TestRecipientEmail "admin@contoso.com"
 ```
 
-**Azure-managed domain (quick testing):**
+### Add a printer SMTP endpoint to an existing deployment
 
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
-    -ResourceGroupName "rg-acs-email-test" `
-    -EmailServiceName "acs-email-test" `
-    -CommunicationServiceName "acs-test" `
-    -UseAzureManagedDomain `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CustomDomainName "contoso.com" `
+    -AddSmtpEndpoint `
+    -EntraAppName "acs-smtp-printers" `
+    -SmtpUsername "printer-smtp" `
+    -NewMailFromAddress "scanner" `
+    -NewMailFromDisplayName "Scanner"
+```
+
+### Re-test email after manual Portal steps
+
+```powershell
+.\scripts\Deploy-ACSEmail.ps1 `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -CustomDomainName "contoso.com" `
+    -TestEmailOnly `
     -TestRecipientEmail "admin@contoso.com"
 ```
 
-**Dry run (see what would happen without making changes):**
+### Dry run (see what would happen)
 
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
@@ -106,57 +77,102 @@ cd acs-email-toolkit
     -WhatIf
 ```
 
-### 3. Configure your devices
+---
 
-After deployment, the script outputs a summary with all SMTP settings:
+## Prerequisites
 
-```
-SMTP SETTINGS (for devices and applications):
-  SMTP Server:              smtp.azurecomm.net
-  Port:                     587
-  Encryption:               STARTTLS
-  Username:                 scanner-smtp
-  Password:                 (Entra app client secret)
-```
-
-Enter these settings into your copier, printer, application, or script. Done.
+| Requirement | Details |
+|---|---|
+| **PowerShell** | 7.0 or later ([Install](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell)) |
+| **Azure PowerShell** | Az module (`Install-Module -Name Az -Force`) |
+| **Az.Communication** | ACS module (`Install-Module -Name Az.Communication -Force`) |
+| **Az.Dns** | DNS module, only for Azure DNS automation (`Install-Module -Name Az.Dns -Force`) |
+| **Azure CLI** | Required for domain verification and Entra app operations ([Install](https://aka.ms/installazurecli)) |
+| **Azure Subscription** | Contributor or Owner role |
+| **Entra ID** | Application Administrator or Global Administrator |
 
 ---
 
-## Parameters
+## What the Script Does (Full Deployment)
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `ResourceGroupName` | Yes | — | Azure Resource Group name |
-| `Location` | No | `eastus` | Azure region for the Resource Group |
-| `DataLocation` | No | `UnitedStates` | Data location for ACS resources |
-| `EmailServiceName` | Yes | — | Email Communication Service name |
-| `CommunicationServiceName` | Yes | — | Communication Service name (**keep short**) |
-| `CustomDomainName` | No* | — | Custom domain for sending email |
-| `MailFromAddresses` | No | `@("DoNotReply")` | Array of sender usernames |
-| `MailFromDisplayNames` | No | `@("Do Not Reply")` | Array of display names (must match count) |
-| `EntraAppName` | No | `acs-smtp-relay` | Entra ID App Registration name |
-| `SmtpUsername` | No | `acs-smtp` | Custom SMTP Username |
-| `SecretExpirationMonths` | No | `12` | Client secret expiration (1-24 months) |
-| `TestRecipientEmail` | No | — | Email address for test email |
-| `SkipDomainVerification` | No | `$false` | Skip interactive DNS verification |
-| `UseAzureManagedDomain` | No | `$false` | Use Azure-managed domain instead of custom |
+1. **Selects subscription** -- prompts if multiple subscriptions exist, shows tenant IDs, syncs both Az PowerShell and Az CLI to the same tenant
+2. **Registers resource provider** -- auto-registers Microsoft.Communication if needed
+3. **Creates Resource Group** with standard tags
+4. **Creates Email Communication Service**
+5. **Creates Communication Service**
+6. **Configures custom domain** with retry and Az CLI fallback
+7. **Creates DNS records** (Azure DNS) or displays manual DNS guidance
+8. **Polls for domain verification** (up to 3 minutes) with Portal URL fallback
+9. **Creates MailFrom sender addresses**
+10. **Links domain** to Communication Service (or provides manual command if unverified)
+11. **Creates Entra ID App Registration** with configurable secret expiration
+12. **Assigns IAM role** directly on Communication Service with Az CLI fallback
+13. **Creates SMTP Username** in email format (username@domain) with cmdlet and REST API fallback
+14. **Sends test email** trying custom username first, then legacy format
+15. **Outputs deployment summary** with all SMTP settings ready for device configuration
 
-*Either `-CustomDomainName` or `-UseAzureManagedDomain` must be specified.
+---
+
+## SMTP Username Format
+
+The script creates SMTP usernames in **email format** (e.g., `acs-smtp@contoso.com`) rather than freeform text. This is important because:
+
+- Most copier and printer admin panels expect email-style usernames
+- The email format works alongside the legacy format -- both are valid
+- The legacy format (`ResourceName.AppID.TenantID`) is 80-100+ characters and breaks on devices with 50-64 character username limits
+- Both formats are shown in the deployment summary so you can use whichever works for your devices
+
+---
+
+## Adding Multiple SMTP Endpoints
+
+After the initial deployment, use `-AddSmtpEndpoint` to create separate authenticated endpoints for different systems:
+
+```powershell
+# Endpoint for ERP system
+.\scripts\Deploy-ACSEmail.ps1 -AddSmtpEndpoint `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CustomDomainName "contoso.com" `
+    -EntraAppName "acs-smtp-erp" `
+    -SmtpUsername "erp-smtp" `
+    -NewMailFromAddress "erp-notifications" `
+    -NewMailFromDisplayName "ERP System"
+
+# Endpoint for firewall alerts
+.\scripts\Deploy-ACSEmail.ps1 -AddSmtpEndpoint `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CustomDomainName "contoso.com" `
+    -EntraAppName "acs-smtp-firewall" `
+    -SmtpUsername "firewall-smtp" `
+    -NewMailFromAddress "alerts" `
+    -NewMailFromDisplayName "Firewall Alerts"
+```
+
+Each endpoint gets its own Entra app, client secret, and SMTP username. If one endpoint's credentials are compromised or need rotation, the others are unaffected.
 
 ---
 
 ## Known Gotchas This Script Handles
 
-These are real-world issues that cause hours of troubleshooting. The script addresses each one:
+**Multi-tenant Az CLI/PowerShell mismatch.** Consultants managing multiple client tenants can end up with Az CLI pointed at one tenant and Az PowerShell at another. The script detects this and synchronizes both tools to the same tenant before creating any resources.
 
-**IAM role inheritance doesn't work reliably.** Assigning the role at the Resource Group level and relying on inheritance to reach the Communication Service resource either takes an unpredictable amount of time or doesn't work at all. This script assigns the role directly on the Communication Service resource.
+**IAM role inheritance doesn't work reliably.** The script assigns the "Communication and Email Service Owner" role directly on the Communication Service resource, not the Resource Group.
 
-**SMTP username length breaks devices.** The legacy username format (`ResourceName.AppID.TenantID`) creates usernames of 80-100+ characters. Most copiers and printers have a 50-64 character limit. This script creates a custom SMTP Username (e.g., `scanner-smtp`) that fits any device.
+**SMTP username length breaks devices.** The legacy format exceeds 80 characters. The script creates email-format usernames that work on any device.
 
-**Two resources, not one.** ACS Email requires both an Email Communication Service and a Communication Service. Many guides don't make this clear. This script creates and links both.
+**Domain verification requires Portal interaction.** The Az CLI `initiate-verification` command doesn't always trigger verification. The script polls and provides the Portal URL when manual verification is needed.
 
-**The "wrong resource" mistake.** When assigning IAM roles, you must target the Communication Service — not the Email Communication Service. When forming the legacy SMTP username, you use the Communication Service name — not the Email Communication Service name. This script gets it right.
+**Two resources, not one.** ACS Email requires both an Email Communication Service and a Communication Service. The script creates and links both.
+
+**Az CLI outputs warnings before JSON.** Multi-tenant accounts produce warning text that breaks JSON parsing. The script filters for JSON content in all Az CLI output.
+
+**Service principal propagation timing.** The script waits 15 seconds after app creation before looking up the service principal, with 3 retry attempts.
+
+**Em dash encoding issues.** The script uses only ASCII characters to prevent encoding problems when downloaded across different platforms.
 
 ---
 
@@ -164,44 +180,42 @@ These are real-world issues that cause hours of troubleshooting. The script addr
 
 ```
 acs-email-toolkit/
-├── README.md                           # This file
-├── LICENSE                             # MIT License
-├── CHANGELOG.md                        # Version history
-├── .gitignore                          # Git ignore rules
-│
-├── scripts/
-│   ├── Deploy-ACSEmail.ps1             # Main deployment script
-│   ├── Send-ACSTestEmail.ps1           # Standalone test email script
-│   └── Remove-ACSEmail.ps1             # Teardown/cleanup script
-│
-├── examples/
-│   ├── deploy-custom-domain.ps1        # Example: Custom domain deployment
-│   ├── deploy-azure-managed.ps1        # Example: Azure-managed domain
-│   ├── deploy-subdomain.ps1            # Example: Subdomain deployment
-│   └── deploy-multi-client.ps1         # Example: Multi-client batch deployment
-│
-├── docs/
-│   ├── TROUBLESHOOTING.md              # Common issues and solutions
-│   ├── COPIER-CONFIG.md                # Copier/printer configuration guide
-│   ├── SECRET-ROTATION.md              # Client secret rotation procedures
-│   └── images/                         # Screenshots and diagrams
-│       └── deployment-flow.png
-│
-└── templates/
-    ├── device-smtp-settings.md         # Template: SMTP settings handoff doc
-    └── client-deployment-checklist.md  # Template: Pre-deployment checklist
+|-- README.md
+|-- LICENSE
+|-- CHANGELOG.md
+|-- .gitignore
+|
+|-- scripts/
+|   |-- Deploy-ACSEmail.ps1             # Main deployment script (3 modes)
+|   |-- Send-ACSTestEmail.ps1           # Standalone test email script (planned)
+|   +-- Remove-ACSEmail.ps1             # Teardown/cleanup script (planned)
+|
+|-- examples/
+|   |-- deploy-custom-domain.ps1        # Custom domain deployment
+|   |-- deploy-azure-managed.ps1        # Azure-managed domain (testing)
+|   |-- deploy-subdomain.ps1            # Subdomain isolation pattern
+|   +-- deploy-multi-client.ps1         # Batch deployment from CSV
+|
+|-- docs/
+|   |-- TROUBLESHOOTING.md              # Common issues and solutions
+|   |-- COPIER-CONFIG.md                # Copier/printer configuration guide
+|   +-- SECRET-ROTATION.md              # Client secret rotation procedures
+|
++-- templates/
+    |-- device-smtp-settings.md         # SMTP settings handoff doc
+    +-- client-deployment-checklist.md  # Pre-deployment checklist
 ```
 
 ---
 
 ## Roadmap
 
-- [ ] `Send-ACSTestEmail.ps1` — Standalone test email script with detailed diagnostics
-- [ ] `Remove-ACSEmail.ps1` — Clean teardown of all ACS Email resources
-- [ ] `deploy-multi-client.ps1` — Batch deployment from a CSV of client configurations
-- [ ] `TROUBLESHOOTING.md` — Expanded troubleshooting guide with error codes
-- [ ] `COPIER-CONFIG.md` — Brand-specific configuration guides (Sharp, Canon, Ricoh, HP, Xerox)
-- [ ] `SECRET-ROTATION.md` — Step-by-step secret rotation with zero-downtime procedure
+- [ ] `Send-ACSTestEmail.ps1` -- Standalone test email script with detailed diagnostics
+- [ ] `Remove-ACSEmail.ps1` -- Clean teardown of all ACS Email resources
+- [ ] `deploy-multi-client.ps1` -- Batch deployment from a CSV of client configurations
+- [ ] `TROUBLESHOOTING.md` -- Expanded troubleshooting guide with error codes
+- [ ] `COPIER-CONFIG.md` -- Brand-specific guides (Sharp, Canon, Ricoh, HP, Xerox)
+- [ ] `SECRET-ROTATION.md` -- Zero-downtime secret rotation procedure
 - [ ] Pester tests for deployment validation
 - [ ] GitHub Actions workflow for CI testing
 
@@ -209,7 +223,7 @@ acs-email-toolkit/
 
 ## Contributing
 
-Contributions are welcome! If you've deployed ACS Email for a device or application that isn't covered here, please submit a PR with configuration details. Copier/printer configuration guides for additional brands are especially appreciated.
+Contributions are welcome! Copier/printer configuration guides for additional brands are especially appreciated.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/xerox-config`)
@@ -221,15 +235,15 @@ Contributions are welcome! If you've deployed ACS Email for a device or applicat
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+MIT License -- see [LICENSE](LICENSE) for details.
 
 ---
 
 ## About Azure Innovators
 
-[Azure Innovators](https://www.azureinnovators.com) helps organizations modernize their IT infrastructure with Microsoft Azure, Entra ID, Microsoft 365, and enterprise security solutions. We specialize in cloud migration, identity management, and cybersecurity strategy.
+[Azure Innovators](https://www.azureinnovators.com) helps organizations modernize their IT infrastructure with Microsoft Azure, Entra ID, Microsoft 365, and enterprise security solutions.
 
 - **Website:** [www.azureinnovators.com](https://www.azureinnovators.com)
 - **Blog:** [Azure Innovators Blog](https://www.azureinnovators.com/blog/)
 - **Contact:** [Get in Touch](https://www.azureinnovators.com/contact-us/)
-- **LinkedIn:** [Azure Innovators](https://www.linkedin.com/company/azure-innovators/)
+- **GitHub:** [github.com/JONeillSr](https://github.com/JONeillSr)
