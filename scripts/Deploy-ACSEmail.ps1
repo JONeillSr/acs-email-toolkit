@@ -4,19 +4,19 @@
     SMTP endpoints to existing deployments, or sends test emails.
 
 .DESCRIPTION
-    This script automates the end-to-end deployment of Azure Communication Services (ACS)
-    Email infrastructure. It supports three execution modes:
+    This script automates the end-to-end deployment of Azure Communication Services (ACS) Email infrastructure.
+    It supports multiple execution modes:
 
     FULL DEPLOYMENT (default): Creates all required Azure resources, configures a custom
     domain, sets up DNS records, creates Entra ID authentication, assigns IAM roles,
-    creates SMTP usernames, and sends a test email. Designed for IT consultants and
-    administrators who need to deploy ACS Email quickly and consistently.
+    creates SMTP usernames, and sends a test email. Designed for anyone who need to deploy
+    ACS Email quickly and consistently.
 
     ADD SMTP ENDPOINT (-AddSmtpEndpoint): Adds a new authenticated SMTP endpoint to an
     existing ACS Email deployment. Creates a new Entra app registration, client secret,
     IAM role assignment, SMTP username, and optional MailFrom address. Use this when a
-    client needs separate credentials for different systems (ERP, printers, firewalls)
-    without redeploying the entire infrastructure.
+    different systems needs separate credentials (ERP, printers, firewalls).
+    This prevents one exposed client secret from compromising everything that uses ACS.
 
     TEST EMAIL ONLY (-TestEmailOnly): Sends a test email using an existing ACS deployment
     to verify connectivity. Use after manual steps (domain verification, SMTP username
@@ -26,7 +26,7 @@
     - Resource Group (optional, if it doesn't exist)
     - Azure Email Communication Service
     - Azure Communication Service
-    - Custom Domain (with verification guidance or automated Azure DNS)
+    - Custom Domain (with verification guidance or automated with Azure DNS)
     - DNS Records (automated when using Azure DNS, manual guidance otherwise)
     - MailFrom Sender Addresses
     - Entra ID App Registration with Client Secret
@@ -44,7 +44,7 @@
     updates DNS records in the Azure DNS Zone. Domain verification TXT records are
     appended to existing record sets. SPF records are intelligently merged with existing
     SPF entries. DKIM and DKIM2 CNAME records are created if they don't exist. The
-    function is subdomain-aware for notify.contoso.com style deployments.
+    function is subdomain-aware for notify.somedomainsomewhere.com style deployments.
 
     Domain Verification:
     After DNS records are created, the script initiates verification and polls for up
@@ -55,7 +55,7 @@
     command to link it manually is provided.
 
     SMTP Username Format:
-    The script creates SMTP usernames in email format (e.g., acs-smtp@contoso.com)
+    The script creates SMTP usernames in email format (e.g., acs-smtp@somedomainsomewhere.com)
     rather than freeform text. This format is compatible with copier and printer admin
     panels that expect email-style credentials. The legacy long-form username
     (ResourceName.AppID.TenantID) is also displayed as a fallback.
@@ -74,16 +74,16 @@
 
 .PARAMETER EmailServiceName
     The name for the Email Communication Service resource.
-    Example: acs-email-contoso-prod-eastus
+    Example: acs-email-somedomainsomewhere-prod-eastus
 
 .PARAMETER CommunicationServiceName
-    The name for the Communication Service resource. Keep this SHORT - it becomes
-    part of the legacy SMTP username format.
-    Example: acs-contoso
+    The name for the Communication Service resource. Keep this SHORT
+    - it becomes part of the legacy SMTP username format.
+    Example: acs-sds
 
 .PARAMETER CustomDomainName
     The custom domain to configure for sending email.
-    Example: contoso.com
+    Example: somedomainsomewhere.com
 
 .PARAMETER MailFromAddresses
     An array of MailFrom sender usernames to create (without the domain).
@@ -103,7 +103,7 @@
 
 .PARAMETER SmtpUsername
     The SMTP Username prefix. Combined with the domain to create the full email-format
-    username (e.g., acs-smtp@contoso.com). Keep short for device compatibility.
+    username (e.g., acs-smtp@somedomainsomewhere.com). Keep short for device compatibility.
     For -AddSmtpEndpoint, use a unique prefix per endpoint (e.g., printer-smtp).
     Default: acs-smtp
 
@@ -125,12 +125,12 @@
 .PARAMETER DnsZoneResourceGroupName
     The Resource Group containing your Azure DNS Zone. When specified, DNS records are
     created automatically. If omitted, manual DNS guidance is displayed.
-    Example: rg-dns-prod
+    Example: dns-prod-rg
 
 .PARAMETER DnsZoneName
     The Azure DNS Zone name. Defaults to CustomDomainName. Use when the zone differs
     from the custom domain (e.g., subdomain deployments).
-    Example: contoso.com
+    Example: somedomainsomewhere.com
 
 .PARAMETER DnsZoneSubscriptionId
     Subscription ID where the DNS Zone resides, if different from the ACS subscription.
@@ -151,6 +151,15 @@
     MailFrom address without touching infrastructure. Requires -ResourceGroupName,
     -CommunicationServiceName, -EntraAppName, and -SmtpUsername.
 
+.PARAMETER CompleteSetup
+    Switch to complete the deployment after manual domain verification in the Azure
+    Portal. The full deployment (Phase 1) creates all infrastructure, DNS records,
+    and MailFrom addresses, then stops if domain verification is still pending.
+    After verifying all four record types (Domain, SPF, DKIM, DKIM2) in the Portal,
+    run the script again with -CompleteSetup to link the domain, create the Entra app,
+    assign IAM roles, create the SMTP username, and send a test email.
+    If verification is not yet complete, the script shows the Portal URL and exits.
+
 .PARAMETER NewMailFromAddress
     MailFrom username for the new endpoint (used with -AddSmtpEndpoint).
     Example: erp-notifications
@@ -165,42 +174,59 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
-        -DnsZoneResourceGroupName "rg-dns-prod" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -DnsZoneResourceGroupName "dns-prod-rg" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
-    Full deployment with automated Azure DNS. Creates all resources, DNS records,
-    Entra app, and sends a test email.
+    Phase 1: Creates all infrastructure, DNS records, and MailFrom addresses.
+    If domain verification completes within the polling window, the script
+    continues automatically to Phase 2. Otherwise it stops with instructions
+    and the exact -CompleteSetup command to run after Portal verification.
+
+.EXAMPLE
+    .\Deploy-ACSEmail.ps1 `
+        -CompleteSetup `
+        -ResourceGroupName "acs-email-prod-eastus-rg" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
+
+    Phase 2: After completing domain verification in the Portal, this links the
+    domain, creates the Entra app, assigns IAM roles, creates the SMTP username,
+    and sends a test email. If verification is still pending, the script shows
+    the Portal URL and exits without making changes.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -AddSmtpEndpoint `
         -EntraAppName "acs-smtp-printers" `
         -SmtpUsername "printer-smtp" `
         -NewMailFromAddress "scanner" `
         -NewMailFromDisplayName "Scanner" `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Adds a new SMTP endpoint for printers to an existing deployment. Creates a
-    dedicated Entra app, SMTP username (printer-smtp@contoso.com), and MailFrom
-    address (scanner@contoso.com) with independent credentials.
+    dedicated Entra app, SMTP username (printer-smtp@somedomainsomewhere.com), and MailFrom
+    address (scanner@somedomainsomewhere.com) with independent credentials.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
         -SmtpPassword "your-client-secret-here" `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Sends a test email using existing ACS infrastructure. Use after completing
     manual domain verification or SMTP username creation.
@@ -208,22 +234,22 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Sends a test email with secure password prompt (no password on command line).
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Full deployment without Azure DNS automation. DNS records must be added
     manually (interactive prompts guide you through the process).
@@ -234,7 +260,7 @@
         -EmailServiceName "acs-email-test" `
         -CommunicationServiceName "acs-test" `
         -UseAzureManagedDomain `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Quick test deployment with an Azure-managed domain. No DNS configuration needed.
 
@@ -348,6 +374,9 @@ param(
 
     [Parameter(HelpMessage = "Add a new SMTP endpoint to an existing ACS deployment (new Entra app, role, SMTP username, MailFrom)")]
     [switch]$AddSmtpEndpoint,
+
+    [Parameter(HelpMessage = "Complete setup after manual domain verification in Portal (links domain, creates Entra app, SMTP username, sends test)")]
+    [switch]$CompleteSetup,
 
     [Parameter(HelpMessage = "MailFrom username for the new endpoint (used with -AddSmtpEndpoint)")]
     [string]$NewMailFromAddress,
@@ -1017,7 +1046,7 @@ function New-ACSDnsRecords {
         $rootRecordName = "@"
     }
     else {
-        # Subdomain: e.g., notify.contoso.com in zone contoso.com -> "notify"
+        # Subdomain: e.g., notify.somedomainsomewhere.com in zone somedomainsomewhere.com -> "notify"
         $rootRecordName = $CustomDomainName.Replace(".$ZoneName", "")
     }
 
@@ -1688,7 +1717,7 @@ function Show-DeploymentSummary {
     Write-Log "  Password:                 (Entra app client secret - see above)" -Level INFO
     Write-Log " " -Level INFO
     Write-Log "SENDER ADDRESSES:" -Level INFO
-    foreach ($sender in $MailFromAddresses) {
+    foreach ($mailsender in $MailFromAddresses) {
         Write-Log "  $sender@$domainName" -Level INFO
     }
     Write-Log " " -Level INFO
@@ -1843,11 +1872,114 @@ function Invoke-ACSEmailDeployment {
                 }
             }
         }
+        elseif ($CompleteSetup) {
+            # ============================================================
+            # MODE: Complete Setup (after manual domain verification)
+            # ============================================================
+            Write-Log "MODE: Complete Setup (post-verification)" -Level INFO
+
+            Test-Prerequisites
+
+            # Verify infrastructure exists
+            $existingComm = Get-AzCommunicationService -ResourceGroupName $ResourceGroupName -Name $CommunicationServiceName -ErrorAction SilentlyContinue
+            if (-not $existingComm) {
+                Write-Log "Communication Service '$CommunicationServiceName' not found. Run a full deployment first." -Level ERROR
+                throw "Communication Service not found."
+            }
+            Write-Log "Communication Service '$CommunicationServiceName' found." -Level SUCCESS
+
+            $existingEmail = Get-AzEmailService -ResourceGroupName $ResourceGroupName -Name $EmailServiceName -ErrorAction SilentlyContinue
+            if (-not $existingEmail) {
+                Write-Log "Email Communication Service '$EmailServiceName' not found. Run a full deployment first." -Level ERROR
+                throw "Email Communication Service not found."
+            }
+            Write-Log "Email Communication Service '$EmailServiceName' found." -Level SUCCESS
+
+            # Check domain verification status
+            $domainName = if ($UseAzureManagedDomain) { "AzureManagedDomain" } else { $CustomDomainName }
+            $domainStatus = Get-AzEmailServiceDomain `
+                -ResourceGroupName $ResourceGroupName `
+                -EmailServiceName $EmailServiceName `
+                -Name $domainName -ErrorAction SilentlyContinue
+
+            if (-not $domainStatus) {
+                Write-Log "Domain '$domainName' not found. Run a full deployment first." -Level ERROR
+                throw "Domain not found."
+            }
+
+            $statusMap = @{
+                "Domain" = $domainStatus.DomainVerificationStatusDomain
+                "SPF"    = $domainStatus.DomainVerificationStatusSpf
+                "DKIM"   = $domainStatus.DomainVerificationStatusDkim
+                "DKIM2"  = $domainStatus.DomainVerificationStatusDkim2
+            }
+
+            $pendingItems = @()
+            foreach ($key in $statusMap.Keys) {
+                $status = $statusMap[$key]
+                if ($status -eq "Verified") {
+                    Write-Log "$key verification: Verified" -Level SUCCESS
+                }
+                else {
+                    Write-Log "$key verification: $status" -Level WARNING
+                    $pendingItems += $key
+                }
+            }
+
+            if ($pendingItems.Count -gt 0) {
+                $subscriptionId = (Get-AzContext).Subscription.Id
+                $portalUrl = "https://portal.azure.com/#@/resource/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Communication/emailServices/$EmailServiceName/provision"
+
+                Write-Log " " -Level INFO
+                Write-Log "============================================================" -Level WARNING
+                Write-Log "  DOMAIN VERIFICATION NOT COMPLETE" -Level WARNING
+                Write-Log "============================================================" -Level WARNING
+                Write-Log " " -Level INFO
+                Write-Log "The following verifications are still pending: $($pendingItems -join ', ')" -Level WARNING
+                Write-Log " " -Level INFO
+                Write-Log "Complete verification in the Azure Portal:" -Level WARNING
+                Write-Log "  1. Open: $portalUrl" -Level WARNING
+                Write-Log "  2. Click on '$domainName'" -Level WARNING
+                Write-Log "  3. Click 'Verify' for each pending record type" -Level WARNING
+                Write-Log "  4. Re-run this script with -CompleteSetup after all four show Verified" -Level WARNING
+                Write-Log " " -Level INFO
+
+                $stopwatch.Stop()
+                Write-Log "Exiting - complete verification and re-run with -CompleteSetup" -Level INFO
+                return
+            }
+
+            Write-Log "All domain verifications confirmed." -Level SUCCESS
+
+            # Step 1: Link domain to Communication Service
+            Connect-ACSDomain
+
+            # Step 2: Create Entra ID App Registration
+            $entraApp = New-ACSEntraApp
+
+            if ($null -ne $entraApp -and -not [string]::IsNullOrWhiteSpace($entraApp.AppId)) {
+                # Step 3: Assign IAM role
+                Set-ACSRoleAssignment -AppId $entraApp.AppId
+
+                # Step 4: Create SMTP Username
+                New-ACSSmtpUsername -AppId $entraApp.AppId
+
+                # Step 5: Send test email
+                Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
+
+                # Step 6: Show summary
+                Show-DeploymentSummary -EntraApp $entraApp
+            }
+            else {
+                Write-Log "Entra app creation returned no result." -Level ERROR
+                throw "Entra app creation failed - no AppId returned."
+            }
+        }
         else {
             # ============================================================
-            # MODE: Full Deployment
+            # MODE: Full Deployment (Phase 1 - Infrastructure & DNS)
             # ============================================================
-            Write-Log "MODE: Full Deployment" -Level INFO
+            Write-Log "MODE: Full Deployment (Phase 1 - Infrastructure & DNS)" -Level INFO
 
             # Step 1: Validate prerequisites
             Test-Prerequisites
@@ -1873,37 +2005,94 @@ function Invoke-ACSEmailDeployment {
             # Step 6: Create MailFrom addresses
             New-ACSMailFromAddresses
 
-            # Step 7: Link domain to Communication Service
-            Connect-ACSDomain
+            # Check if domain is verified - if so, continue to Phase 2 automatically
+            if (-not $WhatIfPreference -and -not $UseAzureManagedDomain) {
+                $domainCheck = Get-AzEmailServiceDomain `
+                    -ResourceGroupName $ResourceGroupName `
+                    -EmailServiceName $EmailServiceName `
+                    -Name $CustomDomainName -ErrorAction SilentlyContinue
 
-            # Step 8: Create Entra ID App Registration
-            $entraApp = New-ACSEntraApp
+                $allVerified = (
+                    $domainCheck.DomainVerificationStatusDomain -eq "Verified" -and
+                    $domainCheck.DomainVerificationStatusSpf -eq "Verified" -and
+                    $domainCheck.DomainVerificationStatusDkim -eq "Verified" -and
+                    $domainCheck.DomainVerificationStatusDkim2 -eq "Verified"
+                )
 
-            # Steps 9-12 depend on the Entra app - skip gracefully during -WhatIf
-            if ($null -eq $entraApp -or [string]::IsNullOrWhiteSpace($entraApp.AppId)) {
-                if ($WhatIfPreference) {
-                    Write-Log "WhatIf: Would assign IAM role to Entra app on '$CommunicationServiceName'" -Level INFO
-                    Write-Log "WhatIf: Would create SMTP Username '$SmtpUsername'" -Level INFO
-                    Write-Log "WhatIf: Would send test email to '$TestRecipientEmail'" -Level INFO
-                    Write-Log "WhatIf: Would display deployment summary" -Level INFO
+                if ($allVerified) {
+                    Write-Log "Domain fully verified - continuing to Phase 2 automatically." -Level SUCCESS
+
+                    # Step 7: Link domain
+                    Connect-ACSDomain
+
+                    # Step 8: Create Entra ID App Registration
+                    $entraApp = New-ACSEntraApp
+
+                    if ($null -ne $entraApp -and -not [string]::IsNullOrWhiteSpace($entraApp.AppId)) {
+                        # Step 9: Assign IAM role
+                        Set-ACSRoleAssignment -AppId $entraApp.AppId
+
+                        # Step 10: Create SMTP Username
+                        New-ACSSmtpUsername -AppId $entraApp.AppId
+
+                        # Step 11: Send test email
+                        Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
+
+                        # Step 12: Show summary
+                        Show-DeploymentSummary -EntraApp $entraApp
+                    }
                 }
                 else {
-                    Write-Log "Entra app creation returned no result. Cannot proceed with Steps 9-12." -Level ERROR
-                    throw "Entra app creation failed - no AppId returned."
+                    # Domain not yet verified - stop and provide instructions
+                    $subscriptionId = (Get-AzContext).Subscription.Id
+                    $portalUrl = "https://portal.azure.com/#@/resource/subscriptions/$subscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Communication/emailServices/$EmailServiceName/provision"
+
+                    Write-Log " " -Level INFO
+                    Write-Log "============================================================" -Level SUCCESS
+                    Write-Log "  PHASE 1 COMPLETE - INFRASTRUCTURE DEPLOYED" -Level SUCCESS
+                    Write-Log "============================================================" -Level SUCCESS
+                    Write-Log " " -Level INFO
+                    Write-Log "All Azure resources and DNS records have been created." -Level SUCCESS
+                    Write-Log "Domain verification is still in progress." -Level WARNING
+                    Write-Log " " -Level INFO
+                    Write-Log "NEXT STEPS:" -Level INFO
+                    Write-Log " " -Level INFO
+                    Write-Log "  Step 1: Complete domain verification in the Azure Portal:" -Level INFO
+                    Write-Log "          $portalUrl" -Level INFO
+                    Write-Log "          Click on '$CustomDomainName', then click 'Verify'" -Level INFO
+                    Write-Log "          for each record type (Domain, SPF, DKIM, DKIM2)." -Level INFO
+                    Write-Log " " -Level INFO
+                    Write-Log "  Step 2: After all four show 'Verified', run Phase 2:" -Level INFO
+                    Write-Log " " -Level INFO
+                    Write-Log "          .\Deploy-ACSEmail.ps1 ``" -Level INFO
+                    Write-Log "              -CompleteSetup ``" -Level INFO
+                    Write-Log "              -ResourceGroupName '$ResourceGroupName' ``" -Level INFO
+                    Write-Log "              -EmailServiceName '$EmailServiceName' ``" -Level INFO
+                    Write-Log "              -CommunicationServiceName '$CommunicationServiceName' ``" -Level INFO
+                    Write-Log "              -CustomDomainName '$CustomDomainName' ``" -Level INFO
+                    Write-Log "              -TestRecipientEmail 'your-email@$CustomDomainName'" -Level INFO
+                    Write-Log " " -Level INFO
+                    Write-Log "============================================================" -Level SUCCESS
                 }
             }
-            else {
-                # Step 9: Assign IAM role
-                Set-ACSRoleAssignment -AppId $entraApp.AppId
+            elseif ($WhatIfPreference) {
+                Write-Log "WhatIf: Would check domain verification and continue to Phase 2" -Level INFO
+                Write-Log "WhatIf: Would link domain to Communication Service" -Level INFO
+                Write-Log "WhatIf: Would create Entra app, IAM role, SMTP username" -Level INFO
+                Write-Log "WhatIf: Would send test email and display summary" -Level INFO
+            }
+            elseif ($UseAzureManagedDomain) {
+                # Azure-managed domains are pre-verified, continue directly
+                Connect-ACSDomain
 
-                # Step 10: Create SMTP Username
-                New-ACSSmtpUsername -AppId $entraApp.AppId
+                $entraApp = New-ACSEntraApp
 
-                # Step 11: Send test email
-                Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
-
-                # Step 12: Show summary
-                Show-DeploymentSummary -EntraApp $entraApp
+                if ($null -ne $entraApp -and -not [string]::IsNullOrWhiteSpace($entraApp.AppId)) {
+                    Set-ACSRoleAssignment -AppId $entraApp.AppId
+                    New-ACSSmtpUsername -AppId $entraApp.AppId
+                    Send-ACSTestEmail -ClientSecret $entraApp.ClientSecret
+                    Show-DeploymentSummary -EntraApp $entraApp
+                }
             }
         }
 
