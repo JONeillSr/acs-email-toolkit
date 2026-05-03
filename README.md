@@ -11,15 +11,21 @@ Automate the end-to-end deployment of Azure Communication Services (ACS) Email -
 
 ---
 
-## Three Modes of Operation
+## Five Modes of Operation
 
 ### 1. Full Deployment (default)
-Creates everything from scratch -- Resource Group, Email Communication Service, Communication Service, custom domain, DNS records, MailFrom addresses, Entra ID authentication, IAM roles, SMTP username, and sends a test email.
+Creates everything from scratch -- Resource Group, Email Communication Service, Communication Service, custom domain, DNS records, MailFrom addresses, Entra ID authentication, IAM roles, SMTP username, and sends a test email. If domain verification completes during the polling window, everything runs in one pass. Otherwise, the script stops cleanly and outputs the exact `-CompleteSetup` command for Phase 2.
 
-### 2. Add SMTP Endpoint (`-AddSmtpEndpoint`)
+### 2. Complete Setup (`-CompleteSetup`)
+Finishes the deployment after manual domain verification in the Azure Portal. Checks all four verification statuses, links the domain, creates the Entra app, assigns IAM roles, creates the SMTP username, and sends a test email. If verification is still pending, shows the Portal URL and exits without making changes.
+
+### 3. Add Domain (`-AddDomain`)
+Adds a new domain to an existing ACS deployment -- for LLCs with multiple DBAs, organizations with regional domains, or MSPs managing multiple brands. Creates the domain, DNS records, MailFrom addresses, and links it alongside any previously linked domains. Existing SMTP credentials can immediately send from the new domain.
+
+### 4. Add SMTP Endpoint (`-AddSmtpEndpoint`)
 Adds a new authenticated SMTP endpoint to an existing deployment. Creates a dedicated Entra app, client secret, IAM role, SMTP username, and optional MailFrom address -- without touching the infrastructure. Use when a client needs separate credentials for printers, ERP systems, firewalls, or other applications.
 
-### 3. Test Email Only (`-TestEmailOnly`)
+### 5. Test Email Only (`-TestEmailOnly`)
 Sends a test email using an existing ACS deployment. Use after completing manual steps (domain verification, SMTP username creation in the Portal) or to re-test after resolving issues. Tries the custom SMTP username first, then falls back to the legacy format automatically.
 
 ---
@@ -64,6 +70,33 @@ Sends a test email using an existing ACS deployment. Use after completing manual
     -CustomDomainName "contoso.com" `
     -TestEmailOnly `
     -TestRecipientEmail "admin@contoso.com"
+```
+
+### Complete setup after Portal domain verification
+
+```powershell
+.\scripts\Deploy-ACSEmail.ps1 `
+    -CompleteSetup `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -CustomDomainName "contoso.com" `
+    -TestRecipientEmail "admin@contoso.com"
+```
+
+### Add a second domain to an existing deployment
+
+```powershell
+.\scripts\Deploy-ACSEmail.ps1 `
+    -AddDomain `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -CustomDomainName "subsidiary.com" `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -DnsZoneName "subsidiary.com" `
+    -MailFromAddresses @("donotreply", "orders") `
+    -MailFromDisplayNames @("Do Not Reply", "Orders")
 ```
 
 ### Dry run (see what would happen)
@@ -156,6 +189,49 @@ Each endpoint gets its own Entra app, client secret, and SMTP username. If one e
 
 ---
 
+## Multi-Domain Deployments
+
+For organizations with multiple domains (LLCs with DBAs, regional brands, MSPs), use `-AddDomain` to add each domain to the same ACS infrastructure:
+
+```powershell
+# Initial deployment with primary domain
+.\scripts\Deploy-ACSEmail.ps1 `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-prod" `
+    -CommunicationServiceName "acs-prod" `
+    -CustomDomainName "azureinnovators.com" `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -MailFromAddresses @("donotreply", "scanner") `
+    -MailFromDisplayNames @("Do Not Reply", "Scanner") `
+    -TestRecipientEmail "admin@azureinnovators.com"
+
+# Add second domain (after Phase 1 + verification + CompleteSetup)
+.\scripts\Deploy-ACSEmail.ps1 -AddDomain `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-prod" `
+    -CommunicationServiceName "acs-prod" `
+    -CustomDomainName "jtcustomtrailers.com" `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -DnsZoneName "jtcustomtrailers.com" `
+    -MailFromAddresses @("donotreply", "orders") `
+    -MailFromDisplayNames @("Do Not Reply", "Orders")
+
+# Add third domain
+.\scripts\Deploy-ACSEmail.ps1 -AddDomain `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-prod" `
+    -CommunicationServiceName "acs-prod" `
+    -CustomDomainName "awesomewildstuff.com" `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -DnsZoneName "awesomewildstuff.com" `
+    -MailFromAddresses @("donotreply", "support") `
+    -MailFromDisplayNames @("Do Not Reply", "Support")
+```
+
+All domains share the same ACS infrastructure. A single set of SMTP credentials can send from any MailFrom address on any linked domain -- the From address in the email determines which domain is used. For isolation, combine with `-AddSmtpEndpoint` to create separate credentials per domain.
+
+---
+
 ## Known Gotchas This Script Handles
 
 **Multi-tenant Az CLI/PowerShell mismatch.** Consultants managing multiple client tenants can end up with Az CLI pointed at one tenant and Az PowerShell at another. The script detects this and synchronizes both tools to the same tenant before creating any resources.
@@ -186,7 +262,7 @@ acs-email-toolkit/
 |-- .gitignore
 |
 |-- scripts/
-|   |-- Deploy-ACSEmail.ps1             # Main deployment script (3 modes)
+|   |-- Deploy-ACSEmail.ps1             # Main deployment script (5 modes)
 |   |-- Send-ACSTestEmail.ps1           # Standalone test email script (planned)
 |   +-- Remove-ACSEmail.ps1             # Teardown/cleanup script (planned)
 |
