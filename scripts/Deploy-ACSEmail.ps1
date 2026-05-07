@@ -4,19 +4,19 @@
     SMTP endpoints to existing deployments, or sends test emails.
 
 .DESCRIPTION
-    This script automates the end-to-end deployment of Azure Communication Services (ACS) Email infrastructure.
-    It supports multiple execution modes:
+    This script automates the end-to-end deployment of Azure Communication Services (ACS)
+    Email infrastructure. It supports three execution modes:
 
     FULL DEPLOYMENT (default): Creates all required Azure resources, configures a custom
     domain, sets up DNS records, creates Entra ID authentication, assigns IAM roles,
-    creates SMTP usernames, and sends a test email. Designed for anyone who need to deploy
-    ACS Email quickly and consistently.
+    creates SMTP usernames, and sends a test email. Designed for IT consultants and
+    administrators who need to deploy ACS Email quickly and consistently.
 
     ADD SMTP ENDPOINT (-AddSmtpEndpoint): Adds a new authenticated SMTP endpoint to an
     existing ACS Email deployment. Creates a new Entra app registration, client secret,
     IAM role assignment, SMTP username, and optional MailFrom address. Use this when a
-    different systems needs separate credentials (ERP, printers, firewalls).
-    This prevents one exposed client secret from compromising everything that uses ACS.
+    client needs separate credentials for different systems (ERP, printers, firewalls)
+    without redeploying the entire infrastructure.
 
     TEST EMAIL ONLY (-TestEmailOnly): Sends a test email using an existing ACS deployment
     to verify connectivity. Use after manual steps (domain verification, SMTP username
@@ -44,7 +44,7 @@
     updates DNS records in the Azure DNS Zone. Domain verification TXT records are
     appended to existing record sets. SPF records are intelligently merged with existing
     SPF entries. DKIM and DKIM2 CNAME records are created if they don't exist. The
-    function is subdomain-aware for notify.somedomainsomewhere.com style deployments.
+    function is subdomain-aware for notify.contoso.com style deployments.
 
     Domain Verification:
     After DNS records are created, the script initiates verification and polls for up
@@ -55,7 +55,7 @@
     command to link it manually is provided.
 
     SMTP Username Format:
-    The script creates SMTP usernames in email format (e.g., acs-smtp@somedomainsomewhere.com)
+    The script creates SMTP usernames in email format (e.g., acs-smtp@contoso.com)
     rather than freeform text. This format is compatible with copier and printer admin
     panels that expect email-style credentials. The legacy long-form username
     (ResourceName.AppID.TenantID) is also displayed as a fallback.
@@ -73,17 +73,18 @@
     Default: UnitedStates
 
 .PARAMETER EmailServiceName
-    The name for the Email Communication Service resource.
-    Example: acs-email-somedomainsomewhere-prod-eastus
+    The name for the Email Communication Service resource. Required for all modes
+    except -TestEmailOnly.
+    Example: acs-email-contoso-prod-eastus
 
 .PARAMETER CommunicationServiceName
     The name for the Communication Service resource. Keep this SHORT - it becomes
     part of the legacy SMTP username format.
-    Example: acs-somedomainsomewhere
+    Example: acs-contoso
 
 .PARAMETER CustomDomainName
     The custom domain to configure for sending email.
-    Example: somedomainsomewhere.com
+    Example: contoso.com
 
 .PARAMETER MailFromAddresses
     An array of MailFrom sender usernames to create (without the domain).
@@ -103,7 +104,7 @@
 
 .PARAMETER SmtpUsername
     The SMTP Username prefix. Combined with the domain to create the full email-format
-    username (e.g., acs-smtp@somedomainsomewhere.com). Keep short for device compatibility.
+    username (e.g., acs-smtp@contoso.com). Keep short for device compatibility.
     For -AddSmtpEndpoint, use a unique prefix per endpoint (e.g., printer-smtp).
     Default: acs-smtp
 
@@ -113,6 +114,19 @@
 
 .PARAMETER TestRecipientEmail
     Email address to send a test email to. Required for -TestEmailOnly mode.
+
+.PARAMETER SubscriptionId
+    Azure Subscription ID. When specified, bypasses the interactive subscription
+    selector and sets the context directly. Use for scripted/automated deployments
+    or when you know the exact subscription. Best used with -TenantId.
+    Example: 00000000-0000-0000-0000-000000000000
+
+.PARAMETER TenantId
+    Azure Tenant ID. When specified, ensures Az PowerShell and Az CLI both target
+    the correct tenant. Bypasses tenant detection from the subscription list.
+    Critical for consultants managing multiple client tenants to prevent resources
+    from being created in the wrong tenant.
+    Example: 00000000-0000-0000-0000-000000000000
 
 .PARAMETER SkipDomainVerification
     Switch to skip the domain verification step. Use when DNS records are pre-configured
@@ -130,7 +144,7 @@
 .PARAMETER DnsZoneName
     The Azure DNS Zone name. Defaults to CustomDomainName. Use when the zone differs
     from the custom domain (e.g., subdomain deployments).
-    Example: somedomainsomewhere.com
+    Example: contoso.com
 
 .PARAMETER DnsZoneSubscriptionId
     Subscription ID where the DNS Zone resides, if different from the ACS subscription.
@@ -184,13 +198,13 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
         -DnsZoneResourceGroupName "rg-dns-prod" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Phase 1: Creates all infrastructure, DNS records, and MailFrom addresses.
     If domain verification completes within the polling window, the script
@@ -201,10 +215,10 @@
     .\Deploy-ACSEmail.ps1 `
         -CompleteSetup `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
+        -TestRecipientEmail "admin@contoso.com"
 
     Phase 2: After completing domain verification in the Portal, this links the
     domain, creates the Entra app, assigns IAM roles, creates the SMTP username,
@@ -214,28 +228,28 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
-        -CustomDomainName "somedomainsomewhere.com" `
+        -CommunicationServiceName "acs-contoso" `
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CustomDomainName "contoso.com" `
         -AddSmtpEndpoint `
         -EntraAppName "acs-smtp-printers" `
         -SmtpUsername "printer-smtp" `
         -NewMailFromAddress "scanner" `
         -NewMailFromDisplayName "Scanner" `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Adds a new SMTP endpoint for printers to an existing deployment. Creates a
-    dedicated Entra app, SMTP username (printer-smtp@somedomainsomewhere.com), and MailFrom
-    address (scanner@somedomainsomewhere.com) with independent credentials.
+    dedicated Entra app, SMTP username (printer-smtp@contoso.com), and MailFrom
+    address (scanner@contoso.com) with independent credentials.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
         -TestEmailOnly `
         -SmtpPassword "your-client-secret-here" `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Sends a test email using existing ACS infrastructure. Use after completing
     manual domain verification or SMTP username creation.
@@ -243,22 +257,40 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
         -TestEmailOnly `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Sends a test email with secure password prompt (no password on command line).
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
+        -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+        -TenantId "00000000-0000-0000-0000-000000000000" `
+        -DnsZoneResourceGroupName "rg-dns-prod" `
+        -MailFromAddresses @("donotreply", "scanner") `
+        -MailFromDisplayNames @("Do Not Reply", "Scanner") `
+        -TestRecipientEmail "admin@contoso.com"
+
+    Full deployment with subscription and tenant bypass. Skips the interactive
+    subscription selector and sets both Az PowerShell and Az CLI to the specified
+    tenant and subscription directly. Ideal for scripted deployments or consultants
+    who know the exact target environment.
+
+.EXAMPLE
+    .\Deploy-ACSEmail.ps1 `
+        -ResourceGroupName "acs-email-prod-eastus-rg" `
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CommunicationServiceName "acs-contoso" `
+        -CustomDomainName "contoso.com" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Full deployment without Azure DNS automation. DNS records must be added
     manually (interactive prompts guide you through the process).
@@ -269,7 +301,7 @@
         -EmailServiceName "acs-email-test" `
         -CommunicationServiceName "acs-test" `
         -UseAzureManagedDomain `
-        -TestRecipientEmail "admin@somedomainsomewhere.com"
+        -TestRecipientEmail "admin@contoso.com"
 
     Quick test deployment with an Azure-managed domain. No DNS configuration needed.
 
@@ -277,8 +309,8 @@
     .\Deploy-ACSEmail.ps1 `
         -AddDomain `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -EmailServiceName "acs-email-contoso-prod-eastus" `
+        -CommunicationServiceName "acs-contoso" `
         -CustomDomainName "subsidiary.com" `
         -DnsZoneResourceGroupName "rg-dns-prod" `
         -DnsZoneName "subsidiary.com" `
@@ -292,7 +324,7 @@
 
 .NOTES
     Script Name  : Deploy-ACSEmail.ps1
-    Version      : 2.1.0
+    Version      : 2.2.0
     Author       : John O'Neill Sr.
     Company      : Azure Innovators
     Website      : https://www.azureinnovators.com
@@ -311,6 +343,11 @@
     - PowerShell 7.0 or later recommended
 
     Change Log:
+    v2.2.0 - 2026-04-30 - Added -SubscriptionId and -TenantId parameters to bypass
+                          interactive subscription selector for scripted deployments,
+                          EmailServiceName no longer mandatory (not needed for TestEmailOnly),
+                          validation checks skip gracefully for TestEmailOnly mode,
+                          Connect-AzAccount uses -TenantId when provided
     v2.1.0 - 2026-04-30 - Added -AddDomain mode for multi-domain deployments (LLCs
                           with DBAs, regional domains, MSP multi-brand scenarios),
                           Connect-ACSDomain now preserves existing linked domains
@@ -352,8 +389,7 @@ param(
     [ValidateSet("UnitedStates", "Europe", "UnitedKingdom", "Japan", "Australia")]
     [string]$DataLocation = "UnitedStates",
 
-    [Parameter(Mandatory = $true, HelpMessage = "Email Communication Service name")]
-    [ValidateNotNullOrEmpty()]
+    [Parameter(HelpMessage = "Email Communication Service name (not required for -TestEmailOnly)")]
     [string]$EmailServiceName,
 
     [Parameter(Mandatory = $true, HelpMessage = "Communication Service name (keep short)")]
@@ -381,6 +417,12 @@ param(
 
     [Parameter(HelpMessage = "Email address for test email")]
     [string]$TestRecipientEmail,
+
+    [Parameter(HelpMessage = "Azure Subscription ID (bypasses interactive subscription selector)")]
+    [string]$SubscriptionId,
+
+    [Parameter(HelpMessage = "Azure Tenant ID (bypasses tenant detection, ensures Az CLI uses correct tenant)")]
+    [string]$TenantId,
 
     [Parameter(HelpMessage = "Skip interactive domain verification")]
     [switch]$SkipDomainVerification,
@@ -509,54 +551,108 @@ function Test-Prerequisites {
     }
 
     # Validate MailFrom arrays match
-    if ($MailFromAddresses.Count -ne $MailFromDisplayNames.Count) {
-        Write-Log "MailFromAddresses count ($($MailFromAddresses.Count)) must match MailFromDisplayNames count ($($MailFromDisplayNames.Count))." -Level ERROR
-        throw "MailFrom parameter mismatch."
+    # Validate MailFrom arrays match (skip for TestEmailOnly)
+    if (-not $TestEmailOnly) {
+        if ($MailFromAddresses.Count -ne $MailFromDisplayNames.Count) {
+            Write-Log "MailFromAddresses count ($($MailFromAddresses.Count)) must match MailFromDisplayNames count ($($MailFromDisplayNames.Count))." -Level ERROR
+            throw "MailFrom parameter mismatch."
+        }
     }
 
-    # Validate domain parameters
-    if (-not $UseAzureManagedDomain -and [string]::IsNullOrWhiteSpace($CustomDomainName)) {
+    # Validate domain parameters (skip for TestEmailOnly)
+    if (-not $TestEmailOnly -and -not $UseAzureManagedDomain -and [string]::IsNullOrWhiteSpace($CustomDomainName)) {
         Write-Log "Either -CustomDomainName or -UseAzureManagedDomain must be specified." -Level ERROR
         throw "No domain specified."
+    }
+
+    # Validate EmailServiceName for modes that need it
+    if (-not $TestEmailOnly -and [string]::IsNullOrWhiteSpace($EmailServiceName)) {
+        Write-Log "-EmailServiceName is required for this mode." -Level ERROR
+        throw "Missing required parameter: EmailServiceName"
     }
 
     # Check Azure login
     $context = Get-AzContext
     if (-not $context) {
         Write-Log "Not logged into Azure. Running Connect-AzAccount..." -Level WARNING
-        Connect-AzAccount
+        if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+            Connect-AzAccount -TenantId $TenantId
+        }
+        else {
+            Connect-AzAccount
+        }
         $context = Get-AzContext
     }
 
-    # Subscription selection - prompt if multiple subscriptions exist
-    $subscriptions = Get-AzSubscription -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Enabled" }
+    # Subscription/Tenant selection
+    if (-not [string]::IsNullOrWhiteSpace($SubscriptionId)) {
+        # Explicit subscription specified - bypass interactive selector
+        $targetTenant = if (-not [string]::IsNullOrWhiteSpace($TenantId)) { $TenantId } else { $context.Tenant.Id }
+        Write-Log "Using specified subscription: $SubscriptionId" -Level INFO
+        Set-AzContext -SubscriptionId $SubscriptionId -TenantId $targetTenant | Out-Null
+        $context = Get-AzContext
+        Write-Log "Set subscription: '$($context.Subscription.Name)' (Tenant: $($context.Tenant.Id))" -Level SUCCESS
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($TenantId)) {
+        # Tenant specified but no subscription - set tenant, then check for multiple subs
+        Set-AzContext -TenantId $TenantId | Out-Null
+        $context = Get-AzContext
+        Write-Log "Set tenant: $TenantId" -Level INFO
 
-    if ($subscriptions.Count -gt 1) {
-        Write-Log "Multiple Azure subscriptions found:" -Level INFO
-        Write-Log " " -Level INFO
-        for ($i = 0; $i -lt $subscriptions.Count; $i++) {
-            $current = if ($subscriptions[$i].Id -eq $context.Subscription.Id) { " (current)" } else { "" }
-            $tenantLabel = $subscriptions[$i].TenantId
-            Write-Log "  [$($i + 1)] $($subscriptions[$i].Name) ($($subscriptions[$i].Id)) [Tenant: $tenantLabel]$current" -Level INFO
+        $subscriptions = Get-AzSubscription -TenantId $TenantId -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Enabled" }
+        if ($subscriptions.Count -gt 1) {
+            Write-Log "Multiple subscriptions found in tenant $TenantId`:" -Level INFO
+            Write-Log " " -Level INFO
+            for ($i = 0; $i -lt $subscriptions.Count; $i++) {
+                $current = if ($subscriptions[$i].Id -eq $context.Subscription.Id) { " (current)" } else { "" }
+                Write-Log "  [$($i + 1)] $($subscriptions[$i].Name) ($($subscriptions[$i].Id))$current" -Level INFO
+            }
+            Write-Log " " -Level INFO
+
+            $selection = Read-Host "Select the subscription for this deployment (1-$($subscriptions.Count)), or press ENTER to keep current"
+
+            if (-not [string]::IsNullOrWhiteSpace($selection)) {
+                $selectedIndex = [int]$selection - 1
+                if ($selectedIndex -ge 0 -and $selectedIndex -lt $subscriptions.Count) {
+                    $selectedSub = $subscriptions[$selectedIndex]
+                    Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $TenantId | Out-Null
+                    Write-Log "Switched to subscription: $($selectedSub.Name)" -Level SUCCESS
+                    $context = Get-AzContext
+                }
+            }
         }
-        Write-Log " " -Level INFO
+    }
+    else {
+        # No explicit subscription or tenant - interactive selector
+        $subscriptions = Get-AzSubscription -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Enabled" }
 
-        $selection = Read-Host "Select the subscription for this deployment (1-$($subscriptions.Count)), or press ENTER to keep current"
+        if ($subscriptions.Count -gt 1) {
+            Write-Log "Multiple Azure subscriptions found:" -Level INFO
+            Write-Log " " -Level INFO
+            for ($i = 0; $i -lt $subscriptions.Count; $i++) {
+                $current = if ($subscriptions[$i].Id -eq $context.Subscription.Id) { " (current)" } else { "" }
+                $tenantLabel = $subscriptions[$i].TenantId
+                Write-Log "  [$($i + 1)] $($subscriptions[$i].Name) ($($subscriptions[$i].Id)) [Tenant: $tenantLabel]$current" -Level INFO
+            }
+            Write-Log " " -Level INFO
 
-        if (-not [string]::IsNullOrWhiteSpace($selection)) {
-            $selectedIndex = [int]$selection - 1
-            if ($selectedIndex -ge 0 -and $selectedIndex -lt $subscriptions.Count) {
-                $selectedSub = $subscriptions[$selectedIndex]
-                Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId | Out-Null
-                Write-Log "Switched to subscription: $($selectedSub.Name) (Tenant: $($selectedSub.TenantId))" -Level SUCCESS
-                $context = Get-AzContext
+            $selection = Read-Host "Select the subscription for this deployment (1-$($subscriptions.Count)), or press ENTER to keep current"
+
+            if (-not [string]::IsNullOrWhiteSpace($selection)) {
+                $selectedIndex = [int]$selection - 1
+                if ($selectedIndex -ge 0 -and $selectedIndex -lt $subscriptions.Count) {
+                    $selectedSub = $subscriptions[$selectedIndex]
+                    Set-AzContext -SubscriptionId $selectedSub.Id -TenantId $selectedSub.TenantId | Out-Null
+                    Write-Log "Switched to subscription: $($selectedSub.Name) (Tenant: $($selectedSub.TenantId))" -Level SUCCESS
+                    $context = Get-AzContext
+                }
+                else {
+                    Write-Log "Invalid selection. Using current subscription." -Level WARNING
+                }
             }
             else {
-                Write-Log "Invalid selection. Using current subscription." -Level WARNING
+                Write-Log "Keeping current subscription: $($context.Subscription.Name)" -Level INFO
             }
-        }
-        else {
-            Write-Log "Keeping current subscription: $($context.Subscription.Name)" -Level INFO
         }
     }
 
@@ -1080,7 +1176,7 @@ function New-ACSDnsRecords {
         $rootRecordName = "@"
     }
     else {
-        # Subdomain: e.g., notify.somedomainsomewhere.com in zone somedomainsomewhere.com -> "notify"
+        # Subdomain: e.g., notify.contoso.com in zone contoso.com -> "notify"
         $rootRecordName = $CustomDomainName.Replace(".$ZoneName", "")
     }
 

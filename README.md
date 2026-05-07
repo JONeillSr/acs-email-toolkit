@@ -110,6 +110,37 @@ Sends a test email using an existing ACS deployment. Use after completing manual
     -WhatIf
 ```
 
+### Scripted deployment (bypass subscription selector)
+
+```powershell
+.\scripts\Deploy-ACSEmail.ps1 `
+    -ResourceGroupName "rg-acs-email-prod" `
+    -EmailServiceName "acs-email-contoso-prod" `
+    -CommunicationServiceName "acs-contoso" `
+    -CustomDomainName "contoso.com" `
+    -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+    -TenantId "00000000-0000-0000-0000-000000000000" `
+    -DnsZoneResourceGroupName "rg-dns-prod" `
+    -MailFromAddresses @("donotreply", "scanner") `
+    -MailFromDisplayNames @("Do Not Reply", "Scanner") `
+    -TestRecipientEmail "admin@contoso.com"
+```
+
+---
+
+## Subscription and Tenant Bypass
+
+For scripted or automated deployments, use `-SubscriptionId` and `-TenantId` to skip the interactive subscription selector:
+
+| Parameters | Behavior |
+|---|---|
+| Neither | Interactive selector with tenant IDs shown (default) |
+| `-TenantId` only | Filters to that tenant, prompts if multiple subscriptions within it |
+| `-SubscriptionId` only | Sets subscription directly, uses current tenant |
+| Both | Sets both directly, no prompts at all |
+
+Both Az PowerShell and Az CLI are synchronized to the selected tenant regardless of which method is used. This prevents the cross-tenant resource creation issue that can occur in multi-tenant consultant environments.
+
 ---
 
 ## Prerequisites

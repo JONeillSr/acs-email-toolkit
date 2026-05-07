@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-30
+
+### Added
+- `-SubscriptionId` parameter to bypass interactive subscription selector
+- `-TenantId` parameter to ensure correct tenant targeting (bypasses tenant detection)
+- Subscription/tenant bypass behavior table: neither, TenantId only, SubscriptionId only, or both
+- `Connect-AzAccount` uses `-TenantId` when provided for initial login
+- Scripted deployment example in help documentation and README
+
+### Changed
+- `EmailServiceName` no longer mandatory (not required for `-TestEmailOnly` mode)
+- Validation checks (domain, MailFrom arrays) skip gracefully for `-TestEmailOnly`
+- Runtime validation enforces `EmailServiceName` for modes that need it
+
 ## [2.1.0] - 2026-04-30
 
 ### Added
