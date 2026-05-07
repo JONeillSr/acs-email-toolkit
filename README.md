@@ -26,7 +26,7 @@ Adds a new domain to an existing ACS deployment -- for LLCs with multiple DBAs, 
 Adds a new authenticated SMTP endpoint to an existing deployment. Creates a dedicated Entra app, client secret, IAM role, SMTP username, and optional MailFrom address -- without touching the infrastructure. Use when a client needs separate credentials for printers, ERP systems, firewalls, or other applications.
 
 ### 5. Test Email Only (`-TestEmailOnly`)
-Sends a test email using an existing ACS deployment. Use after completing manual steps (domain verification, SMTP username creation in the Portal) or to re-test after resolving issues. Tries the custom SMTP username first, then falls back to the legacy format automatically.
+Sends a test email using an existing ACS deployment. **No Azure login required** -- this is a pure SMTP operation that connects directly to smtp.azurecomm.net with the provided credentials. No subscription selection, no module loading, no tenant sync. Just SMTP. Tries the custom SMTP username and provides troubleshooting tips if it fails.
 
 ---
 
@@ -37,13 +37,13 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
     -ResourceGroupName "rg-acs-email-prod" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -CustomDomainName "contoso.com" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -DnsZoneResourceGroupName "rg-dns-prod" `
     -MailFromAddresses @("donotreply", "scanner", "alerts") `
     -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-    -TestRecipientEmail "admin@contoso.com"
+    -TestRecipientEmail "admin@somedomainsomewhere.com"
 ```
 
 ### Add a printer SMTP endpoint to an existing deployment
@@ -51,9 +51,9 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
     -ResourceGroupName "rg-acs-email-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CustomDomainName "contoso.com" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -AddSmtpEndpoint `
     -EntraAppName "acs-smtp-printers" `
     -SmtpUsername "printer-smtp" `
@@ -61,15 +61,21 @@ Sends a test email using an existing ACS deployment. Use after completing manual
     -NewMailFromDisplayName "Scanner"
 ```
 
-### Re-test email after manual Portal steps
+### Re-test email (no Azure login needed)
 
 ```powershell
+# With secure prompt (recommended - secret never on command line)
 .\scripts\Deploy-ACSEmail.ps1 `
-    -ResourceGroupName "rg-acs-email-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -CustomDomainName "contoso.com" `
     -TestEmailOnly `
-    -TestRecipientEmail "admin@contoso.com"
+    -CustomDomainName "somedomainsomewhere.com" `
+    -TestRecipientEmail "admin@somedomainsomewhere.com"
+
+# With inline secret (for scripted scenarios)
+.\scripts\Deploy-ACSEmail.ps1 `
+    -TestEmailOnly `
+    -CustomDomainName "somedomainsomewhere.com" `
+    -SmtpPassword (ConvertTo-SecureString 'your-secret' -AsPlainText -Force) `
+    -TestRecipientEmail "admin@somedomainsomewhere.com"
 ```
 
 ### Complete setup after Portal domain verification
@@ -78,10 +84,10 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 .\scripts\Deploy-ACSEmail.ps1 `
     -CompleteSetup `
     -ResourceGroupName "rg-acs-email-prod" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -CustomDomainName "contoso.com" `
-    -TestRecipientEmail "admin@contoso.com"
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -CustomDomainName "somedomainsomewhere.com" `
+    -TestRecipientEmail "admin@somedomainsomewhere.com"
 ```
 
 ### Add a second domain to an existing deployment
@@ -90,8 +96,8 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 .\scripts\Deploy-ACSEmail.ps1 `
     -AddDomain `
     -ResourceGroupName "rg-acs-email-prod" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CommunicationServiceName "acs-contoso" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
     -CustomDomainName "subsidiary.com" `
     -DnsZoneResourceGroupName "rg-dns-prod" `
     -DnsZoneName "subsidiary.com" `
@@ -104,9 +110,9 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
     -ResourceGroupName "rg-acs-email-prod" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -CustomDomainName "contoso.com" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -WhatIf
 ```
 
@@ -115,15 +121,15 @@ Sends a test email using an existing ACS deployment. Use after completing manual
 ```powershell
 .\scripts\Deploy-ACSEmail.ps1 `
     -ResourceGroupName "rg-acs-email-prod" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -CustomDomainName "contoso.com" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -SubscriptionId "00000000-0000-0000-0000-000000000000" `
     -TenantId "00000000-0000-0000-0000-000000000000" `
     -DnsZoneResourceGroupName "rg-dns-prod" `
     -MailFromAddresses @("donotreply", "scanner") `
     -MailFromDisplayNames @("Do Not Reply", "Scanner") `
-    -TestRecipientEmail "admin@contoso.com"
+    -TestRecipientEmail "admin@somedomainsomewhere.com"
 ```
 
 ---
@@ -179,7 +185,7 @@ Both Az PowerShell and Az CLI are synchronized to the selected tenant regardless
 
 ## SMTP Username Format
 
-The script creates SMTP usernames in **email format** (e.g., `acs-smtp@contoso.com`) rather than freeform text. This is important because:
+The script creates SMTP usernames in **email format** (e.g., `acs-smtp@somedomainsomewhere.com`) rather than freeform text. This is important because:
 
 - Most copier and printer admin panels expect email-style usernames
 - The email format works alongside the legacy format -- both are valid
@@ -196,9 +202,9 @@ After the initial deployment, use `-AddSmtpEndpoint` to create separate authenti
 # Endpoint for ERP system
 .\scripts\Deploy-ACSEmail.ps1 -AddSmtpEndpoint `
     -ResourceGroupName "rg-acs-email-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CustomDomainName "contoso.com" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -EntraAppName "acs-smtp-erp" `
     -SmtpUsername "erp-smtp" `
     -NewMailFromAddress "erp-notifications" `
@@ -207,9 +213,9 @@ After the initial deployment, use `-AddSmtpEndpoint` to create separate authenti
 # Endpoint for firewall alerts
 .\scripts\Deploy-ACSEmail.ps1 -AddSmtpEndpoint `
     -ResourceGroupName "rg-acs-email-prod" `
-    -CommunicationServiceName "acs-contoso" `
-    -EmailServiceName "acs-email-contoso-prod" `
-    -CustomDomainName "contoso.com" `
+    -CommunicationServiceName "acs-somedomainsomewhere" `
+    -EmailServiceName "acs-email-somedomainsomewhere-prod" `
+    -CustomDomainName "somedomainsomewhere.com" `
     -EntraAppName "acs-smtp-firewall" `
     -SmtpUsername "firewall-smtp" `
     -NewMailFromAddress "alerts" `
@@ -280,6 +286,8 @@ All domains share the same ACS infrastructure. A single set of SMTP credentials 
 **Service principal propagation timing.** The script waits 15 seconds after app creation before looking up the service principal, with 3 retry attempts.
 
 **Em dash encoding issues.** The script uses only ASCII characters to prevent encoding problems when downloaded across different platforms.
+
+**PSScriptAnalyzer clean.** The script passes PSScriptAnalyzer with zero warnings -- SecureString for passwords, no unused variables, proper verb-noun naming.
 
 ---
 

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-05-07
+
+### Changed
+- `SmtpPassword` parameter changed from `[string]` to `[SecureString]` per PSScriptAnalyzer
+- `$sender` variable renamed to `$mailsender` to avoid PSScriptAnalyzer warning
+- Unused variable assignments (`$zone`, `$response`, `$smtpUsernameResult`) replaced with `$null =`
+- Help examples updated to use `somedomainsomewhere.com` (author-owned domain)
+- All PSScriptAnalyzer warnings resolved
+
+## [2.3.0] - 2026-05-07
+
+### Changed
+- `-TestEmailOnly` is now a pure SMTP operation with zero Azure authentication required
+- No Az login, subscription selection, module validation, or CLI sync for test emails
+- Minimal parameters: just `-CustomDomainName`, `-TestRecipientEmail`, `-SmtpPassword`
+- `ResourceGroupName` and `CommunicationServiceName` no longer mandatory (runtime validated per mode)
+- Improved troubleshooting output for failed test emails with Portal navigation guidance
+
 ## [2.2.0] - 2026-04-30
 
 ### Added

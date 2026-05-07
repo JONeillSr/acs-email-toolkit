@@ -151,13 +151,17 @@
     Only needed when DNS is intentionally in a separate subscription.
 
 .PARAMETER TestEmailOnly
-    Switch to send a test email only, skipping all resource creation. Requires
-    -TestRecipientEmail and either -SmtpPassword or interactive password prompt.
-    Tries the custom SMTP username first, then falls back to the legacy format.
+    Switch to send a test email only, skipping all resource creation AND all Azure
+    authentication. This mode is a pure SMTP operation - it connects directly to
+    smtp.azurecomm.net with the provided credentials. No Azure login, subscription
+    selection, or module loading is required. Only needs -CustomDomainName,
+    -TestRecipientEmail, and -SmtpPassword (or interactive prompt).
+    Optionally pass -SmtpUsername if the username differs from the default.
 
 .PARAMETER SmtpPassword
-    The SMTP password (Entra app client secret) for -TestEmailOnly mode.
+    The SMTP password (Entra app client secret) as a SecureString for -TestEmailOnly mode.
     If omitted in -TestEmailOnly mode, the script prompts securely.
+    To pass on the command line: -SmtpPassword (ConvertTo-SecureString 'secret' -AsPlainText -Force)
 
 .PARAMETER AddSmtpEndpoint
     Switch to add a new SMTP endpoint to an existing ACS deployment. Creates a new
@@ -244,25 +248,24 @@
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
-        -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
-        -SmtpPassword "your-client-secret-here" `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -SmtpPassword (ConvertTo-SecureString 'your-client-secret' -AsPlainText -Force) `
         -TestRecipientEmail "admin@somedomainsomewhere.com"
 
-    Sends a test email using existing ACS infrastructure. Use after completing
-    manual domain verification or SMTP username creation.
+    Sends a test email using existing ACS infrastructure. No Azure login required -
+    this is a pure SMTP operation. Uses the default SMTP username (acs-smtp@somedomainsomewhere.com)
+    and default From address (DoNotReply@somedomainsomewhere.com).
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
-        -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-somedomainsomewhere" `
-        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -SmtpUsername "printer-smtp" `
         -TestRecipientEmail "admin@somedomainsomewhere.com"
 
-    Sends a test email with secure password prompt (no password on command line).
+    Sends a test email with a custom SMTP username and secure password prompt.
+    No Azure login, no subscription selection - just SMTP.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
@@ -324,7 +327,7 @@
 
 .NOTES
     Script Name  : Deploy-ACSEmail.ps1
-    Version      : 2.2.0
+    Version      : 2.3.0
     Author       : John O'Neill Sr.
     Company      : Azure Innovators
     Website      : https://www.azureinnovators.com
@@ -343,6 +346,11 @@
     - PowerShell 7.0 or later recommended
 
     Change Log:
+    v2.3.0 - 2026-05-07 - TestEmailOnly is now a pure SMTP operation with zero Azure
+                          authentication required, ResourceGroupName and
+                          CommunicationServiceName no longer mandatory (runtime
+                          validated per mode), minimal parameters for TestEmailOnly:
+                          just -CustomDomainName -TestRecipientEmail -SmtpPassword
     v2.2.0 - 2026-04-30 - Added -SubscriptionId and -TenantId parameters to bypass
                           interactive subscription selector for scripted deployments,
                           EmailServiceName no longer mandatory (not needed for TestEmailOnly),
@@ -378,8 +386,7 @@
 
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [Parameter(Mandatory = $true, HelpMessage = "Resource Group name for ACS resources")]
-    [ValidateNotNullOrEmpty()]
+    [Parameter(HelpMessage = "Resource Group name for ACS resources (not required for -TestEmailOnly)")]
     [string]$ResourceGroupName,
 
     [Parameter(HelpMessage = "Azure region for the Resource Group")]
@@ -392,8 +399,7 @@ param(
     [Parameter(HelpMessage = "Email Communication Service name (not required for -TestEmailOnly)")]
     [string]$EmailServiceName,
 
-    [Parameter(Mandatory = $true, HelpMessage = "Communication Service name (keep short)")]
-    [ValidateNotNullOrEmpty()]
+    [Parameter(HelpMessage = "Communication Service name (not required for -TestEmailOnly)")]
     [string]$CommunicationServiceName,
 
     [Parameter(HelpMessage = "Custom domain name for sending email")]
@@ -443,7 +449,7 @@ param(
     [switch]$TestEmailOnly,
 
     [Parameter(HelpMessage = "SMTP password/client secret for test email (used with -TestEmailOnly)")]
-    [string]$SmtpPassword,
+    [SecureString]$SmtpPassword,
 
     [Parameter(HelpMessage = "Add a new SMTP endpoint to an existing ACS deployment (new Entra app, role, SMTP username, MailFrom)")]
     [switch]$AddSmtpEndpoint,
@@ -569,6 +575,18 @@ function Test-Prerequisites {
     if (-not $TestEmailOnly -and [string]::IsNullOrWhiteSpace($EmailServiceName)) {
         Write-Log "-EmailServiceName is required for this mode." -Level ERROR
         throw "Missing required parameter: EmailServiceName"
+    }
+
+    # Validate ResourceGroupName and CommunicationServiceName for modes that need them
+    if (-not $TestEmailOnly) {
+        if ([string]::IsNullOrWhiteSpace($ResourceGroupName)) {
+            Write-Log "-ResourceGroupName is required for this mode." -Level ERROR
+            throw "Missing required parameter: ResourceGroupName"
+        }
+        if ([string]::IsNullOrWhiteSpace($CommunicationServiceName)) {
+            Write-Log "-CommunicationServiceName is required for this mode." -Level ERROR
+            throw "Missing required parameter: CommunicationServiceName"
+        }
     }
 
     # Check Azure login
@@ -1160,7 +1178,7 @@ function New-ACSDnsRecords {
     try {
     # Verify the DNS zone exists
     try {
-        $zone = Get-AzDnsZone -ResourceGroupName $ZoneResourceGroup -Name $ZoneName -ErrorAction Stop
+        $null = Get-AzDnsZone -ResourceGroupName $ZoneResourceGroup -Name $ZoneName -ErrorAction Stop
         Write-Log "Azure DNS Zone '$ZoneName' found." -Level INFO
     }
     catch {
@@ -1694,7 +1712,7 @@ function New-ACSSmtpUsername {
                 "Content-Type"  = "application/json"
             }
 
-            $response = Invoke-RestMethod -Uri $uri -Method PUT -Headers $headers -Body $body
+            $null = Invoke-RestMethod -Uri $uri -Method PUT -Headers $headers -Body $body
             Write-Log "SMTP Username '$smtpUsernameEmail' created via REST API." -Level SUCCESS
             return $smtpUsernameEmail
         }
@@ -1870,7 +1888,7 @@ function Show-DeploymentSummary {
     Write-Log " " -Level INFO
     Write-Log "SENDER ADDRESSES:" -Level INFO
     foreach ($mailsender in $MailFromAddresses) {
-        Write-Log "  $mailsender@$domainName" -Level INFO
+        Write-Log "  $sender@$domainName" -Level INFO
     }
     Write-Log " " -Level INFO
     Write-Log "ENTRA ID APPLICATION:" -Level INFO
@@ -1903,14 +1921,14 @@ function Invoke-ACSEmailDeployment {
     Write-Log "============================================================" -Level INFO
     Write-Log "  Azure Communication Services Email Deployment" -Level INFO
     Write-Log "  Azure Innovators | www.azureinnovators.com" -Level INFO
-    Write-Log "  Script Version: 2.0.0" -Level INFO
+    Write-Log "  Script Version: 2.3.0" -Level INFO
     Write-Log "============================================================" -Level INFO
 
     try {
         # Determine execution mode
         if ($TestEmailOnly) {
             # ============================================================
-            # MODE: Test Email Only
+            # MODE: Test Email Only (lightweight - no Azure auth required)
             # ============================================================
             Write-Log "MODE: Test Email Only" -Level INFO
 
@@ -1919,16 +1937,58 @@ function Invoke-ACSEmailDeployment {
                 throw "Missing required parameter: TestRecipientEmail"
             }
 
-            if ([string]::IsNullOrWhiteSpace($SmtpPassword)) {
-                $secureInput = Read-Host "Enter the SMTP password (client secret)" -AsSecureString
-                $SmtpPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                    [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureInput)
-                )
+            if ([string]::IsNullOrWhiteSpace($CustomDomainName)) {
+                Write-Log "-CustomDomainName is required for -TestEmailOnly mode." -Level ERROR
+                throw "Missing required parameter: CustomDomainName"
             }
 
-            Test-Prerequisites
+            if ($null -eq $SmtpPassword) {
+                $SmtpPassword = Read-Host "Enter the SMTP password (client secret)" -AsSecureString
+            }
 
-            Send-ACSTestEmail -ClientSecret $SmtpPassword
+            # Build SMTP username and From address - no Azure calls needed
+            $smtpUser = "$SmtpUsername@$CustomDomainName"
+            $fromAddress = "$($MailFromAddresses[0])@$CustomDomainName"
+
+            # Try custom SMTP username
+            Write-Log "Sending test email from '$fromAddress' to '$TestRecipientEmail'..." -Level INFO
+            Write-Log "Attempting with SMTP username: $smtpUser" -Level INFO
+
+            try {
+                $credential = New-Object PSCredential($smtpUser, $SmtpPassword)
+                Send-MailMessage `
+                    -SmtpServer "smtp.azurecomm.net" `
+                    -Port 587 `
+                    -UseSsl `
+                    -Credential $credential `
+                    -From $fromAddress `
+                    -To $TestRecipientEmail `
+                    -Subject "ACS Email Test - $(Get-Date -Format 'yyyy-MM-dd HH:mm')" `
+                    -Body "This test email was sent by Deploy-ACSEmail.ps1 (-TestEmailOnly).`n`nSMTP Username: $smtpUser`nFrom: $fromAddress`nTimestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" `
+                    -WarningAction SilentlyContinue
+
+                Write-Log "Test email sent successfully to '$TestRecipientEmail' using username '$smtpUser'." -Level SUCCESS
+            }
+            catch {
+                Write-Log "Custom username '$smtpUser' failed: $($_.Exception.Message)" -Level WARNING
+
+                # Try legacy username if CommunicationServiceName is available
+                if (-not [string]::IsNullOrWhiteSpace($CommunicationServiceName) -and
+                    -not [string]::IsNullOrWhiteSpace($EntraAppName)) {
+                    Write-Log "To try the legacy username format, you need the AppId and TenantId." -Level INFO
+                    Write-Log "Legacy format: $CommunicationServiceName.<AppId>.<TenantId>" -Level INFO
+                }
+
+                Write-Log " " -Level INFO
+                Write-Log "Troubleshooting tips:" -Level WARNING
+                Write-Log "  1. Verify the SMTP username matches what's in the Portal" -Level WARNING
+                Write-Log "     (Communication Service > SMTP Usernames)" -Level WARNING
+                Write-Log "  2. Check that the client secret hasn't expired" -Level WARNING
+                Write-Log "  3. Confirm the From address matches a configured MailFrom" -Level WARNING
+                Write-Log "     (Email Communication Service > Provision Domains > MailFrom Addresses)" -Level WARNING
+                Write-Log "  4. Ensure the domain is verified and linked" -Level WARNING
+                Write-Log "  5. Try passing -SmtpUsername with the exact username from the Portal" -Level WARNING
+            }
         }
         elseif ($AddSmtpEndpoint) {
             # ============================================================
@@ -1989,7 +2049,7 @@ function Invoke-ACSEmailDeployment {
                 Set-ACSRoleAssignment -AppId $entraApp.AppId
 
                 # Step 4: Create SMTP Username
-                $smtpUsernameResult = New-ACSSmtpUsername -AppId $entraApp.AppId
+                $null = New-ACSSmtpUsername -AppId $entraApp.AppId
 
                 # Step 5: Show endpoint summary
                 $domainName = if ($UseAzureManagedDomain) { "AzureManagedDomain" } else { $CustomDomainName }
