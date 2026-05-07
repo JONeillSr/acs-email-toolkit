@@ -44,7 +44,7 @@
     updates DNS records in the Azure DNS Zone. Domain verification TXT records are
     appended to existing record sets. SPF records are intelligently merged with existing
     SPF entries. DKIM and DKIM2 CNAME records are created if they don't exist. The
-    function is subdomain-aware for notify.contoso.com style deployments.
+    function is subdomain-aware for notify.somedomainsomewhere.com style deployments.
 
     Domain Verification:
     After DNS records are created, the script initiates verification and polls for up
@@ -55,7 +55,7 @@
     command to link it manually is provided.
 
     SMTP Username Format:
-    The script creates SMTP usernames in email format (e.g., acs-smtp@contoso.com)
+    The script creates SMTP usernames in email format (e.g., acs-smtp@somedomainsomewhere.com)
     rather than freeform text. This format is compatible with copier and printer admin
     panels that expect email-style credentials. The legacy long-form username
     (ResourceName.AppID.TenantID) is also displayed as a fallback.
@@ -75,16 +75,16 @@
 .PARAMETER EmailServiceName
     The name for the Email Communication Service resource. Required for all modes
     except -TestEmailOnly.
-    Example: acs-email-contoso-prod-eastus
+    Example: acs-email-somedomainsomewhere-prod-eastus
 
 .PARAMETER CommunicationServiceName
     The name for the Communication Service resource. Keep this SHORT - it becomes
     part of the legacy SMTP username format.
-    Example: acs-contoso
+    Example: acs-somedomainsomewhere
 
 .PARAMETER CustomDomainName
     The custom domain to configure for sending email.
-    Example: contoso.com
+    Example: somedomainsomewhere.com
 
 .PARAMETER MailFromAddresses
     An array of MailFrom sender usernames to create (without the domain).
@@ -104,7 +104,7 @@
 
 .PARAMETER SmtpUsername
     The SMTP Username prefix. Combined with the domain to create the full email-format
-    username (e.g., acs-smtp@contoso.com). Keep short for device compatibility.
+    username (e.g., acs-smtp@somedomainsomewhere.com). Keep short for device compatibility.
     For -AddSmtpEndpoint, use a unique prefix per endpoint (e.g., printer-smtp).
     Default: acs-smtp
 
@@ -144,7 +144,7 @@
 .PARAMETER DnsZoneName
     The Azure DNS Zone name. Defaults to CustomDomainName. Use when the zone differs
     from the custom domain (e.g., subdomain deployments).
-    Example: contoso.com
+    Example: somedomainsomewhere.com
 
 .PARAMETER DnsZoneSubscriptionId
     Subscription ID where the DNS Zone resides, if different from the ACS subscription.
@@ -198,13 +198,13 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -DnsZoneResourceGroupName "rg-dns-prod" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Phase 1: Creates all infrastructure, DNS records, and MailFrom addresses.
     If domain verification completes within the polling window, the script
@@ -215,10 +215,10 @@
     .\Deploy-ACSEmail.ps1 `
         -CompleteSetup `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
-        -TestRecipientEmail "admin@contoso.com"
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Phase 2: After completing domain verification in the Portal, this links the
     domain, creates the Entra app, assigns IAM roles, creates the SMTP username,
@@ -228,28 +228,28 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -AddSmtpEndpoint `
         -EntraAppName "acs-smtp-printers" `
         -SmtpUsername "printer-smtp" `
         -NewMailFromAddress "scanner" `
         -NewMailFromDisplayName "Scanner" `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Adds a new SMTP endpoint for printers to an existing deployment. Creates a
-    dedicated Entra app, SMTP username (printer-smtp@contoso.com), and MailFrom
-    address (scanner@contoso.com) with independent credentials.
+    dedicated Entra app, SMTP username (printer-smtp@somedomainsomewhere.com), and MailFrom
+    address (scanner@somedomainsomewhere.com) with independent credentials.
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
         -SmtpPassword "your-client-secret-here" `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Sends a test email using existing ACS infrastructure. Use after completing
     manual domain verification or SMTP username creation.
@@ -257,25 +257,25 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -TestEmailOnly `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Sends a test email with secure password prompt (no password on command line).
 
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -SubscriptionId "00000000-0000-0000-0000-000000000000" `
         -TenantId "00000000-0000-0000-0000-000000000000" `
         -DnsZoneResourceGroupName "rg-dns-prod" `
         -MailFromAddresses @("donotreply", "scanner") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Full deployment with subscription and tenant bypass. Skips the interactive
     subscription selector and sets both Az PowerShell and Az CLI to the specified
@@ -285,12 +285,12 @@
 .EXAMPLE
     .\Deploy-ACSEmail.ps1 `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
-        -CustomDomainName "contoso.com" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
+        -CustomDomainName "somedomainsomewhere.com" `
         -MailFromAddresses @("donotreply", "scanner", "alerts") `
         -MailFromDisplayNames @("Do Not Reply", "Scanner", "System Alerts") `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Full deployment without Azure DNS automation. DNS records must be added
     manually (interactive prompts guide you through the process).
@@ -301,7 +301,7 @@
         -EmailServiceName "acs-email-test" `
         -CommunicationServiceName "acs-test" `
         -UseAzureManagedDomain `
-        -TestRecipientEmail "admin@contoso.com"
+        -TestRecipientEmail "admin@somedomainsomewhere.com"
 
     Quick test deployment with an Azure-managed domain. No DNS configuration needed.
 
@@ -309,8 +309,8 @@
     .\Deploy-ACSEmail.ps1 `
         -AddDomain `
         -ResourceGroupName "acs-email-prod-eastus-rg" `
-        -EmailServiceName "acs-email-contoso-prod-eastus" `
-        -CommunicationServiceName "acs-contoso" `
+        -EmailServiceName "acs-email-somedomainsomewhere-prod-eastus" `
+        -CommunicationServiceName "acs-somedomainsomewhere" `
         -CustomDomainName "subsidiary.com" `
         -DnsZoneResourceGroupName "rg-dns-prod" `
         -DnsZoneName "subsidiary.com" `
@@ -1176,7 +1176,7 @@ function New-ACSDnsRecords {
         $rootRecordName = "@"
     }
     else {
-        # Subdomain: e.g., notify.contoso.com in zone contoso.com -> "notify"
+        # Subdomain: e.g., notify.somedomainsomewhere.com in zone somedomainsomewhere.com -> "notify"
         $rootRecordName = $CustomDomainName.Replace(".$ZoneName", "")
     }
 
@@ -1869,8 +1869,8 @@ function Show-DeploymentSummary {
     Write-Log "  Password:                 (Entra app client secret - see above)" -Level INFO
     Write-Log " " -Level INFO
     Write-Log "SENDER ADDRESSES:" -Level INFO
-    foreach ($sender in $MailFromAddresses) {
-        Write-Log "  $sender@$domainName" -Level INFO
+    foreach ($mailsender in $MailFromAddresses) {
+        Write-Log "  $mailsender@$domainName" -Level INFO
     }
     Write-Log " " -Level INFO
     Write-Log "ENTRA ID APPLICATION:" -Level INFO
@@ -2135,7 +2135,7 @@ function Invoke-ACSEmailDeployment {
                 Write-Log "  Status:         Verified and Linked" -Level INFO
                 Write-Log " " -Level INFO
                 Write-Log "SENDER ADDRESSES:" -Level INFO
-                foreach ($sender in $MailFromAddresses) {
+                foreach ($mailsender in $MailFromAddresses) {
                     Write-Log "  $sender@$CustomDomainName" -Level INFO
                 }
                 Write-Log " " -Level INFO
